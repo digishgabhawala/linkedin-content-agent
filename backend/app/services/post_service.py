@@ -119,6 +119,26 @@ def pending_clarify_question(post: Post) -> str | None:
     return None
 
 
+async def redraft_post(db: Session, client: httpx.AsyncClient, post_id: str) -> Post:
+    """Fresh draft from the original brief + clarification, discarding the
+    current text -- a "start over" action distinct from regenerate's
+    instruction-based revision of the existing draft."""
+    post = get_post(db, post_id)
+    if post.status != "drafting":
+        raise PostServiceError(f"post {post_id} is not in drafting state "
+                               f"(status={post.status})")
+    transcript = _answered_turns(_load_transcript(post))
+    new_text = await generate_draft(client, post.brief, transcript)
+    version = post.draft_version + 1
+    db.add(PostDraft(post_id=post.id, version=version, post_text=new_text,
+                     generated_by="draft", user_instruction=None))
+    post.post_text = new_text
+    post.draft_version = version
+    db.commit()
+    db.refresh(post)
+    return post
+
+
 async def regenerate_post_draft(db: Session, client: httpx.AsyncClient, post_id: str,
                                 instruction: str) -> Post:
     post = get_post(db, post_id)
