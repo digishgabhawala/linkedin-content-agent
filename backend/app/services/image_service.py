@@ -24,7 +24,11 @@ from ..db.models import Post
 
 
 class ImageServiceError(Exception):
-    """Raised for invalid state transitions or a busy single-GPU pipeline."""
+    """Raised for invalid state transitions."""
+
+
+class ImageBusyError(ImageServiceError):
+    """Raised when another post is already image_queued -- maps to HTTP 409."""
 
 
 def _data_images_dir() -> Path:
@@ -47,7 +51,7 @@ def start_image_generation(db: Session, post_id: str) -> Post:
                 .filter(Post.id != post_id)
                 .first())
     if in_flight is not None:
-        raise ImageServiceError(
+        raise ImageBusyError(
             f"post {in_flight.id} is already generating an image -- wait for it "
             "to finish (single-GPU pipeline, one job at a time)")
 
@@ -104,9 +108,17 @@ def is_stalled(post: Post) -> bool:
     return elapsed > timedelta(minutes=settings.image_stall_timeout_minutes)
 
 
-def placeholder_image_path(character_id: str) -> Path | None:
-    """Direct filesystem read of the locked hero.png -- no API call to System 1
-    for this, both are local processes on the same machine (see plan: System 2
-    owns its own placeholder, zero-cost, no generation call)."""
+def ensure_placeholder_image(character_id: str) -> Path | None:
+    """Copy hero.png into our own data/images/ on first use so it's servable
+    under the same /data static mount as real renders. Direct filesystem read
+    of character-forge-v2's workspace -- no API call to System 1, both are
+    local processes on the same machine. Returns None if that character's
+    hero.png doesn't exist yet (no hero locked)."""
+    dest = _data_images_dir() / f"placeholder_{character_id}.png"
+    if dest.exists():
+        return dest
     hero = Path(settings.character_forge_v2_path) / "workspace" / character_id / "hero.png"
-    return hero if hero.exists() else None
+    if not hero.exists():
+        return None
+    shutil.copy(hero, dest)
+    return dest
