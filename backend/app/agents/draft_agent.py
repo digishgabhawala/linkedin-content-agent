@@ -130,7 +130,32 @@ accumulation..."
 None of "30% completion", the value "4", or "unbounded cache growth during gradient \
 accumulation" as the stated root cause were in the brief. They sound plausible and \
 specific, which is exactly why this mistake is easy to make and exactly why it's not \
-allowed -- the post must only claim what was actually said."""
+allowed -- the post must only claim what was actually said.
+
+SECOND EXAMPLE -- this failure mode is WORST on a thin brief with few real facts, \
+because there's a pull to invent detail just to have enough material. Resist it.
+
+BRIEF GIVEN: "fixed an OOM crash in the image pipeline by switching to low-ram mode, \
+zero speed cost"
+(That's it. No percentage, no phase-of-execution, no named root cause, no duration.)
+
+CORRECT -- shorter and honest beats padded and invented:
+"Fixed an OOM crash in our image pipeline today -- switching to low-ram mode cleared \
+it, with no speed cost.
+
+No tradeoff I expected going in -- usually a memory fix like this costs you something \
+in throughput. Not this time.
+
+Small change, real relief. Anyone else found a memory fix that didn't cost you \
+anything in return?"
+
+WRONG -- do NOT do this:
+"...OOM at 80% completion during batch processing... reduced memory usage by 40%... \
+root cause was unbounded temporary buffer growth during tensor reshaping..."
+"80% completion", "batch processing", "40%", and "unbounded temporary buffer growth \
+during tensor reshaping" are ALL invented -- the brief never said any of it. A short, \
+honest 400-character post is the correct output here, not a padded 900-character one \
+built on invented specifics."""
 
 SYSTEM_PROMPT = _SYSTEM_PROMPT_BASE + "\n\n" + _CALIBRATION_EXAMPLE
 
@@ -190,13 +215,20 @@ async def clarify_turn(client: httpx.AsyncClient, brief: str,
            "question": result.get("question")}
 
 
+_FACT_REMINDER = ("REMINDER: use ONLY facts literally stated above. Do not add any "
+                  "number, percentage, tool name, or specific cause that wasn't given. "
+                  "If the material is thin, write a short honest post -- do not pad it "
+                  "with invented specifics.")
+
+
 async def generate_draft(client: httpx.AsyncClient, brief: str,
                          transcript: list[dict]) -> str:
     """Initial draft from the brief + clarification transcript."""
     user_content = (f"BRIEF:\n{brief}\n\n"
                     f"CLARIFICATION:\n{_format_transcript(transcript)}\n\n"
-                    "Write the LinkedIn post.")
-    text = await _call_ollama(client, SYSTEM_PROMPT, user_content, think=True)
+                    f"{_FACT_REMINDER}\n\nWrite the LinkedIn post.")
+    text = await _call_ollama(client, SYSTEM_PROMPT, user_content, think=True,
+                              temperature=0.5)
     return _strip_wrapping_quotes(text)
 
 
@@ -205,7 +237,8 @@ async def regenerate_draft(client: httpx.AsyncClient, previous_text: str,
     """Revise an existing draft per user feedback/instruction."""
     user_content = (f"CURRENT DRAFT:\n{previous_text}\n\n"
                     f"REVISION INSTRUCTION:\n{instruction}\n\n"
-                    "Write the revised LinkedIn post, applying the instruction while "
-                    "keeping the structure/voice rules.")
-    text = await _call_ollama(client, SYSTEM_PROMPT, user_content, think=True)
+                    f"{_FACT_REMINDER}\n\nWrite the revised LinkedIn post, applying the "
+                    "instruction while keeping the structure/voice rules.")
+    text = await _call_ollama(client, SYSTEM_PROMPT, user_content, think=True,
+                              temperature=0.5)
     return _strip_wrapping_quotes(text)
