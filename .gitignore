@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+.venv/
+venv/
+
+# Node
+node_modules/
+dist/
+
+# Runtime data / secrets
+*.db
+.env
+backend/data/images/
+
+# OS cruft
+.DS_Store
