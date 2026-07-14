@@ -81,6 +81,7 @@ def _serialize_post(post: Post) -> dict:
         "has_final_image": post.final_image_path is not None,
         "image_job_error": post.image_job_error,
         "is_stalled": isvc.is_stalled(post),
+        "image_started_at": post.image_started_at.isoformat() if post.image_started_at else None,
         "created_at": post.created_at.isoformat() if post.created_at else None,
         "updated_at": post.updated_at.isoformat() if post.updated_at else None,
     }
