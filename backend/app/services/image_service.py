@@ -41,8 +41,12 @@ def start_image_generation(db: Session, post_id: str) -> Post:
     post = db.get(Post, post_id)
     if post is None:
         raise ImageServiceError(f"post {post_id} not found")
-    if post.status != "locked":
-        raise ImageServiceError(f"post {post_id} is not locked (status={post.status})")
+    # image_failed is a valid start state too -- it's the retry path (see
+    # ImageStatus.tsx's Retry button). scene_instruction/seed/character_id
+    # are already on the post from the original lock, nothing to re-derive.
+    if post.status not in ("locked", "image_failed"):
+        raise ImageServiceError(
+            f"post {post_id} is not locked or retryable (status={post.status})")
 
     # Single-GPU pipeline, single-user tool -- no queue, just refuse a second
     # concurrent job rather than silently racing two ComfyUI renders.
