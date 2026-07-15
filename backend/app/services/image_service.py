@@ -12,6 +12,7 @@ unique key the callback can look up directly.
 """
 from __future__ import annotations
 
+import random
 import shutil
 import subprocess
 from datetime import datetime, timedelta
@@ -58,6 +59,17 @@ def start_image_generation(db: Session, post_id: str) -> Post:
         raise ImageBusyError(
             f"post {in_flight.id} is already generating an image -- wait for it "
             "to finish (single-GPU pipeline, one job at a time)")
+
+    # A retry MUST get a fresh seed. ComfyUI caches per-node outputs keyed on
+    # exact input values (including seed); resubmitting the identical seed +
+    # hero.png + instruction is a 100% cache hit that replays whatever was
+    # cached last time -- including a corrupted/black result -- in ~0ms with
+    # no real compute at all. Confirmed live: a retry with the original seed
+    # came back "image_ready" in under 20s and ComfyUI's own history showed
+    # execution_cached for every node, timestamp-identical to
+    # execution_success (i.e. it never actually rendered anything).
+    if post.status == "image_failed":
+        post.seed = random.randint(1, 999_999)
 
     callback_url = f"{settings.image_callback_base_url}/api/internal/image-callback"
     cmd = [
