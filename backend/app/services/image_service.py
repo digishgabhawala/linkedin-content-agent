@@ -32,8 +32,8 @@ class ImageBusyError(ImageServiceError):
     """Raised when another post is already image_queued -- maps to HTTP 409."""
 
 
-def _data_images_dir() -> Path:
-    d = Path(settings.data_dir) / "images"
+def _generated_images_dir() -> Path:
+    d = Path(settings.generated_dir) / "images"
     d.mkdir(parents=True, exist_ok=True)
     return d
 
@@ -99,7 +99,7 @@ def handle_image_callback(db: Session, job_id: str, ok: bool,
         raise ImageServiceError(f"callback for unknown post/job_id {job_id}")
 
     if ok:
-        dest = _data_images_dir() / f"{post.id}.png"
+        dest = _generated_images_dir() / f"{post.id}.png"
         shutil.copy(image_path, dest)
         post.final_image_path = str(dest)
         post.status = "image_ready"
@@ -125,12 +125,12 @@ def is_stalled(post: Post) -> bool:
 
 
 def ensure_placeholder_image(character_id: str) -> Path | None:
-    """Copy hero.png into our own data/images/ on first use so it's servable
-    under the same /data static mount as real renders. Direct filesystem read
-    of character-forge-v2's workspace -- no API call to System 1, both are
-    local processes on the same machine. Returns None if that character's
-    hero.png doesn't exist yet (no hero locked)."""
-    dest = _data_images_dir() / f"placeholder_{character_id}.png"
+    """Copy hero.png into our own generated/images/ on first use so it's
+    servable under the same /generated static mount as real renders. Direct
+    filesystem read of character-forge-v2's workspace -- no API call needed,
+    both are local processes on the same machine. Returns None if that
+    character's hero.png doesn't exist yet (no hero locked)."""
+    dest = _generated_images_dir() / f"placeholder_{character_id}.png"
     if dest.exists():
         return dest
     hero = Path(settings.character_forge_v2_path) / "workspace" / character_id / "hero.png"

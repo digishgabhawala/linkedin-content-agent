@@ -12,7 +12,7 @@ dist/
 # Runtime data / secrets
 *.db
 .env
-backend/data/images/
+backend/generated/images/
 
 # OS cruft
 .DS_Store

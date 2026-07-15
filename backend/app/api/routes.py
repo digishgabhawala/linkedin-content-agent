@@ -61,9 +61,9 @@ class ImageCallbackRequest(BaseModel):
 
 def _image_url(post: Post) -> str | None:
     if post.final_image_path:
-        return f"/data/images/{Path(post.final_image_path).name}"
+        return f"/generated/images/{Path(post.final_image_path).name}"
     placeholder = isvc.ensure_placeholder_image(post.character_id)
-    return f"/data/images/{placeholder.name}" if placeholder else None
+    return f"/generated/images/{placeholder.name}" if placeholder else None
 
 
 def _serialize_post(post: Post) -> dict:
