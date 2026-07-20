@@ -42,10 +42,12 @@ def start_image_generation(db: Session, post_id: str) -> Post:
     post = db.get(Post, post_id)
     if post is None:
         raise ImageServiceError(f"post {post_id} not found")
-    # image_failed is a valid start state too -- it's the retry path (see
-    # ImageStatus.tsx's Retry button). scene_instruction/seed/character_id
-    # are already on the post from the original lock, nothing to re-derive.
-    if post.status not in ("locked", "image_failed"):
+    # image_failed (retry after a failure) and image_ready (re-roll a
+    # technically-successful-but-unwanted render, e.g. garbled in-image text)
+    # are both valid start states too, alongside the normal first-time
+    # "locked" path. scene_instruction/character_id are already on the post
+    # from the original lock, nothing to re-derive.
+    if post.status not in ("locked", "image_failed", "image_ready"):
         raise ImageServiceError(
             f"post {post_id} is not locked or retryable (status={post.status})")
 
@@ -60,15 +62,17 @@ def start_image_generation(db: Session, post_id: str) -> Post:
             f"post {in_flight.id} is already generating an image -- wait for it "
             "to finish (single-GPU pipeline, one job at a time)")
 
-    # A retry MUST get a fresh seed. ComfyUI caches per-node outputs keyed on
-    # exact input values (including seed); resubmitting the identical seed +
-    # hero.png + instruction is a 100% cache hit that replays whatever was
-    # cached last time -- including a corrupted/black result -- in ~0ms with
-    # no real compute at all. Confirmed live: a retry with the original seed
-    # came back "image_ready" in under 20s and ComfyUI's own history showed
-    # execution_cached for every node, timestamp-identical to
-    # execution_success (i.e. it never actually rendered anything).
-    if post.status == "image_failed":
+    # A retry or re-roll MUST get a fresh seed. ComfyUI caches per-node
+    # outputs keyed on exact input values (including seed); resubmitting the
+    # identical seed + hero.png + instruction is a 100% cache hit that
+    # replays whatever was cached last time -- including a corrupted result,
+    # or just the exact same "good but not quite right" image the user is
+    # trying to re-roll away from -- in ~0ms with no real compute at all.
+    # Confirmed live: a retry with the original seed came back "image_ready"
+    # in under 20s and ComfyUI's own history showed execution_cached for
+    # every node, timestamp-identical to execution_success (i.e. it never
+    # actually rendered anything).
+    if post.status in ("image_failed", "image_ready"):
         post.seed = random.randint(1, 999_999)
 
     callback_url = f"{settings.image_callback_base_url}/api/internal/image-callback"

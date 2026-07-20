@@ -1,5 +1,6 @@
 export type PostStatus =
   | 'clarifying'
+  | 'needs_input'
   | 'drafting'
   | 'locked'
   | 'image_queued'
@@ -7,14 +8,26 @@ export type PostStatus =
   | 'image_failed'
   | 'ready'
 
+export interface PillarScore {
+  score: number
+  reason: string
+}
+
 export interface Post {
   id: string
   character_id: string
   brief: string
   status: PostStatus
   pending_question: string | null
+  clarify_transcript: { question: string; answer: string | null }[]
   post_text: string | null
   draft_version: number
+  category: string | null
+  gate_scores: Record<string, PillarScore>
+  pillar_scores: Record<string, PillarScore>
+  weighted_score: number | null
+  recalibration_count: number
+  escalation_reason: string | null
   scene_instruction: string | null
   seed: number | null
   image_url: string | null

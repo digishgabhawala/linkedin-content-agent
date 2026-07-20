@@ -6,6 +6,9 @@ import { BriefForm } from './components/BriefForm'
 import { ClarifyChat } from './components/ClarifyChat'
 import { DraftPanel } from './components/DraftPanel'
 import { DraftHistory } from './components/DraftHistory'
+import { ConversationHistory } from './components/ConversationHistory'
+import { PillarScores } from './components/PillarScores'
+import { NeedsInput } from './components/NeedsInput'
 import { LockAndScene } from './components/LockAndScene'
 import { ImageStatus } from './components/ImageStatus'
 import { PostPreview } from './components/PostPreview'
@@ -57,6 +60,18 @@ export default function App() {
   async function handleAnswer(answer: string) {
     if (!post) return
     const p = await run(() => api.clarify(post.id, answer))
+    if (p) setPost(p)
+  }
+
+  async function handleSubmitAdditionalInfo(info: string) {
+    if (!post) return
+    const p = await run(() => api.submitAdditionalInfo(post.id, info))
+    if (p) setPost(p)
+  }
+
+  async function handleAcceptDraft() {
+    if (!post) return
+    const p = await run(() => api.acceptDraft(post.id))
     if (p) setPost(p)
   }
 
@@ -145,6 +160,15 @@ export default function App() {
             <ClarifyChat post={post} onAnswer={handleAnswer} loading={busy} />
           )}
 
+          {post && post.status === 'needs_input' && (
+            <NeedsInput
+              post={post}
+              onSubmitInfo={handleSubmitAdditionalInfo}
+              onAcceptDraft={handleAcceptDraft}
+              loading={busy}
+            />
+          )}
+
           {post && post.status === 'drafting' && (
             <>
               <DraftPanel
@@ -154,7 +178,6 @@ export default function App() {
                 onLock={handleLock}
                 loading={busy}
               />
-              <DraftHistory postId={post.id} currentVersion={post.draft_version} />
               <FeedbackForm onSubmit={handleFeedback} />
             </>
           )}
@@ -178,8 +201,24 @@ export default function App() {
 
           {post && (post.status === 'image_ready' || post.status === 'ready') && (
             <>
-              <PostPreview post={post} onFinalize={handleFinalize} loading={busy} />
+              <PostPreview
+                post={post}
+                onFinalize={handleFinalize}
+                onRegenerateImage={handleGenerateImage}
+                loading={busy}
+              />
               <FeedbackForm onSubmit={handleFeedback} />
+            </>
+          )}
+
+          {post && post.status !== 'clarifying' && post.status !== 'needs_input' && (
+            <PillarScores post={post} />
+          )}
+
+          {post && post.status !== 'clarifying' && (
+            <>
+              <ConversationHistory post={post} />
+              <DraftHistory postId={post.id} currentVersion={post.draft_version} />
             </>
           )}
         </main>

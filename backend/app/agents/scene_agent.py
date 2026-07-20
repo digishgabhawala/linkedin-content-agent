@@ -37,15 +37,37 @@ examples from this system's validated scene library):
 - "presenting a chart on a whiteboard, three-quarter view, office"
 - "riding a bicycle through a park, side view, sunny day"
 - "celebrating with confetti falling, arms raised, front view"
-- "facepalming at a laptop showing an error, frustrated"
+- "facepalming at a laptop, frustrated"
 - "carrying a stack of pizza boxes, slightly overwhelmed"
 - "asleep at a desk, night, monitor glow"
+- "pointing at a wall of printed charts and sticky notes, side view, office"
 
 HARD CONSTRAINTS:
 - No appearance/clothing/color/face description of any kind (already locked elsewhere).
 - No rendered text, words, numbers, logos, or UI chrome in the scene -- diffusion models \
 render text as garbage, and "a laptop showing an error" is fine but "a laptop showing \
 the text ERROR 500: OOM" is not.
+- A monitor/screen IS allowed as a scene subject -- but if one appears, its content must \
+be restricted to CHARTS, GRAPHS, OR ABSTRACT DRAWINGS ONLY (bars, lines, pie slices, \
+sketch shapes) and you must say so explicitly, e.g. "a monitor showing a bar chart, no \
+numbers or text". Say "no numbers or text", not just "no labels" -- axis tick numbers \
+(e.g. fake "780", "750" on a chart's axis) have been confirmed live to leak through even \
+when only "labels" were excluded, since the model doesn't treat axis numbers as \
+"labels". Never imply a HEADER, TITLE, CAPTION, LABEL, LEGEND, or any dashboard-style \
+layout -- that's specifically what triggers garbled fake text, confirmed live, on this \
+exact system (vague phrasing like "reviewing feedback on a screen" or "a chart on a \
+monitor" made the model invent a dashboard-with-headline on its own, even though the \
+chart/graph shapes themselves rendered fine). The failure mode is TEXT/NUMBERS/LABELS, \
+not screens -- so be explicit that the screen shows only visual chart/graph marks, \
+nothing else. Physical/analog alternatives remain equally good options, not a fallback: \
+a whiteboard sketch, a wall of printed sticky notes, pointing at a wall-mounted printout, \
+flipping through a notebook, a closed laptop.
+- ALWAYS give the SETTING at least one concrete, physical detail -- a desk, a chair, a \
+window, a whiteboard, a couch -- never just the bare word "office"/"home"/"outside" on \
+its own. A bare setting word with nothing else has been confirmed live to render as a \
+flat, isolated character floating on a plain white background with no environment at \
+all, which looks worse than a fully-imagined scene even when every other constraint is \
+satisfied. "office" alone is weak; "sitting at a desk, office with a window" is strong.
 - No other people, named companies, or real trademarks/brands.
 - One character, one clear action. Not a collage of multiple moments.
 - Match the post's actual mood -- a debugging-frustration post should NOT get a \
@@ -69,7 +91,19 @@ energy"
 POST (mid-debugging frustration mood): "Spent the whole day chasing a race condition \
 that only reproduced under load. Turned out to be a missing mutex around a shared \
 counter."
-SCENE: "facepalming at a laptop showing an error, frustrated, dim office lighting"
+SCENE: "facepalming at a laptop, screen dim, frustrated, dim office lighting"
+
+POST (reviewing/analyzing feedback or data, calm analytical mood): "Set up a local \
+system that reviews my conversations and gives feedback on what could have gone \
+better, broken down by type and role."
+SCENE: "pointing at a wall of printed charts and sticky notes, side view, office, \
+analytical"
+
+POST (metrics/tracking mood, screen genuinely fits better than a wall of notes): "Built \
+a dashboard that tracks all my metrics in one place. Finally have visibility into what \
+matters."
+SCENE: "sitting at a desk, pointing at a monitor showing a bar chart, no numbers or \
+text, office with a window, side view, analytical"
 
 POST (celebratory ship mood): "Shipped the v2 migration tonight after three weeks of \
 work. Zero downtime, all tests green. Team pulled together hard for this one."

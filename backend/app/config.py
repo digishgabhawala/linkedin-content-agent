@@ -17,7 +17,14 @@ class Settings(BaseSettings):
     generated_dir: str = "generated"  # rendered images + placeholder; not source, safe to delete/rebuild
 
     default_character_id: str = "gtee_dev"
-    clarify_max_turns: int = 3
+    clarify_max_turns: int = 5
+    max_recalibration_passes: int = 3
+
+    # WHO (user_profile.md) / HOW (skill.md) config -- see CONTENT_QUALITY_DESIGN.md.
+    # Relative to cwd (backend/), same convention as db_path/generated_dir.
+    user_profile_path: str = "content_config/user_profile.md"
+    skill_path: str = "content_config/skill.md"
+    example_posts_path: str = "content_config/example_posts.md"
 
     # character-forge-v2 integration, invoked via subprocess.Popen, never
     # imported -- standalone, shares nothing.

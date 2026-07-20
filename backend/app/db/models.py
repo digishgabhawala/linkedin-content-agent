@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import Column, String, Integer, DateTime, ForeignKey, Text
+from sqlalchemy import Column, String, Integer, Float, DateTime, ForeignKey, Text
 from .database import Base
 
 
@@ -12,11 +12,26 @@ class Post(Base):
     brief = Column(Text, nullable=False)
     clarify_transcript = Column(Text, nullable=True)  # JSON-encoded list of turns
 
-    # clarifying|drafting|locked|image_queued|image_ready|image_failed|ready
+    # clarifying|needs_input|drafting|locked|image_queued|image_ready|image_failed|ready
+    # needs_input: an escalation from the recalibration loop that a rewrite
+    # can't fix (needs new material or a different angle) -- see
+    # CONTENT_QUALITY_DESIGN.md and post_service.py's _draft_and_score().
     status = Column(String, nullable=False, default="clarifying")
 
     post_text = Column(Text, nullable=True)
     draft_version = Column(Integer, nullable=False, default=0)
+
+    # content-quality scoring (see taxonomy.py / judge_agent.py). category is
+    # inferred once during clarify and reused for pillar weighting at every
+    # subsequent score. gate_scores/pillar_scores are JSON-encoded
+    # {pillar: {"score": float, "reason": str}}. escalation_reason is set only
+    # while status == "needs_input", cleared once resolved.
+    category = Column(String, nullable=True)
+    gate_scores = Column(Text, nullable=True)
+    pillar_scores = Column(Text, nullable=True)
+    weighted_score = Column(Float, nullable=True)
+    recalibration_count = Column(Integer, nullable=False, default=0)
+    escalation_reason = Column(Text, nullable=True)
 
     scene_instruction = Column(Text, nullable=True)
     seed = Column(Integer, nullable=True)
