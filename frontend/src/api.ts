@@ -27,6 +27,11 @@ export const api = {
 
   redraft: (id: string) => req<Post>(`/posts/${id}/draft`, { method: 'POST' }),
 
+  submitAdditionalInfo: (id: string, info: string) =>
+    req<Post>(`/posts/${id}/additional-info`, { method: 'POST', body: JSON.stringify({ info }) }),
+
+  acceptDraft: (id: string) => req<Post>(`/posts/${id}/accept-draft`, { method: 'POST' }),
+
   regenerate: (id: string, instruction: string) =>
     req<Post>(`/posts/${id}/regenerate`, {
       method: 'POST',

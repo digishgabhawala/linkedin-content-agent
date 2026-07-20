@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import httpx
@@ -38,6 +39,10 @@ class RegenerateRequest(BaseModel):
     instruction: str
 
 
+class AdditionalInfoRequest(BaseModel):
+    info: str
+
+
 class SceneUpdateRequest(BaseModel):
     scene_instruction: str
 
@@ -73,8 +78,15 @@ def _serialize_post(post: Post) -> dict:
         "brief": post.brief,
         "status": post.status,
         "pending_question": ps.pending_clarify_question(post),
+        "clarify_transcript": json.loads(post.clarify_transcript) if post.clarify_transcript else [],
         "post_text": post.post_text,
         "draft_version": post.draft_version,
+        "category": post.category,
+        "gate_scores": json.loads(post.gate_scores) if post.gate_scores else {},
+        "pillar_scores": json.loads(post.pillar_scores) if post.pillar_scores else {},
+        "weighted_score": post.weighted_score,
+        "recalibration_count": post.recalibration_count,
+        "escalation_reason": post.escalation_reason,
         "scene_instruction": post.scene_instruction,
         "seed": post.seed,
         "image_url": _image_url(post),
@@ -147,6 +159,31 @@ async def clarify(post_id: str, req: ClarifyRequest, db: Session = Depends(get_d
     _post_or_404(db, post_id)
     try:
         post = await ps.submit_clarify_answer(db, client, post_id, req.answer)
+    except ps.PostServiceError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return _serialize_post(post)
+
+
+@router.post("/posts/{post_id}/additional-info")
+async def additional_info(post_id: str, req: AdditionalInfoRequest, db: Session = Depends(get_db),
+                          client: httpx.AsyncClient = Depends(get_http_client)):
+    """Human's response to a needs_input escalation (see post_service.py's
+    _draft_and_score) -- unbounded, unlike the automatic recalibration loop."""
+    _post_or_404(db, post_id)
+    try:
+        post = await ps.submit_additional_info(db, client, post_id, req.info)
+    except ps.PostServiceError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return _serialize_post(post)
+
+
+@router.post("/posts/{post_id}/accept-draft")
+def accept_draft(post_id: str, db: Session = Depends(get_db)):
+    """Human's call to proceed with the current best draft despite an
+    escalation notice -- the human is always the final gate."""
+    _post_or_404(db, post_id)
+    try:
+        post = ps.accept_current_draft(db, post_id)
     except ps.PostServiceError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return _serialize_post(post)
