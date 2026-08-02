@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { Post } from '../types'
 
 interface Props {
@@ -9,11 +9,37 @@ interface Props {
 
 export function ClarifyChat({ post, onAnswer, loading }: Props) {
   const [answer, setAnswer] = useState('')
+  const [elapsed, setElapsed] = useState(0)
+
+  // Answering the LAST clarify question doesn't just save the answer -- it
+  // synchronously runs the full draft -> judge -> recalibrate pipeline in
+  // the same request, which routinely takes 60-120s+. With no feedback that
+  // looks identical to "broken" (found live -- a user gave up mid-request
+  // assuming it hung). This can't tell in advance which submission will be
+  // the last one, so it just escalates the message the longer any answer
+  // submission takes.
+  useEffect(() => {
+    if (!loading) {
+      setElapsed(0)
+      return
+    }
+    const start = Date.now()
+    const id = setInterval(() => setElapsed(Math.round((Date.now() - start) / 1000)), 1000)
+    return () => clearInterval(id)
+  }, [loading])
 
   function submit() {
     if (!answer.trim() || loading) return
     onAnswer(answer.trim())
     setAnswer('')
+  }
+
+  function loadingMessage(): string | null {
+    if (!loading) return null
+    if (elapsed < 5) return 'Thinking…'
+    if (elapsed < 15) return 'Still thinking — checking if we have enough detail yet…'
+    return "Still working — if that was the last question, it's now writing and " +
+      `scoring a full draft, which can take 1-2 minutes. (${elapsed}s)`
   }
 
   return (
@@ -46,6 +72,10 @@ export function ClarifyChat({ post, onAnswer, loading }: Props) {
           {loading ? '…' : 'Answer'}
         </button>
       </div>
+
+      {loading && (
+        <p className="text-xs text-gray-500 animate-pulse">{loadingMessage()}</p>
+      )}
     </div>
   )
 }

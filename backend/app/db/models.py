@@ -34,6 +34,11 @@ class Post(Base):
     escalation_reason = Column(Text, nullable=True)
 
     scene_instruction = Column(Text, nullable=True)
+    # Name of the SceneAsset (recurring backdrop, e.g. "office") this post's
+    # scene reused/created, if any -- null for one-off metaphor scenes with
+    # no reusable setting. Traceability only; the asset's own detail_text is
+    # the source of truth, this just lets the UI point back to it.
+    scene_asset_name = Column(String, nullable=True)
     seed = Column(Integer, nullable=True)
     final_image_path = Column(String, nullable=True)
     image_job_error = Column(Text, nullable=True)
@@ -53,6 +58,25 @@ class PostDraft(Base):
     generated_by = Column(String, nullable=False)  # draft|regenerate|user_edit
     user_instruction = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class SceneAsset(Base):
+    """A recurring, named visual backdrop (e.g. "office", "coffee_shop") --
+    text-only, name -> detail-text mapping, per the explicit design decision
+    that this is NOT reference-image-based consistency (see
+    linkedin-content-agent-product-pivot memory note / this session's
+    brainstorm). Grows dynamically: scene_agent proposes a name for any scene
+    whose backdrop is a real recurring place (not a one-off metaphor prop);
+    if the name is new, whatever detail text it generated this time becomes
+    the seed, persisted here for every future scene with that name to reuse
+    verbatim instead of re-deriving generic phrasing each time."""
+    __tablename__ = "scene_assets"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    name = Column(String, nullable=False, unique=True)  # slug, e.g. "office"
+    detail_text = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 class Feedback(Base):

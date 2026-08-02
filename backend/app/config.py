@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     user_profile_path: str = "content_config/user_profile.md"
     skill_path: str = "content_config/skill.md"
     example_posts_path: str = "content_config/example_posts.md"
+    scene_examples_path: str = "content_config/scene_examples.md"
 
     # character-forge-v2 integration, invoked via subprocess.Popen, never
     # imported -- standalone, shares nothing.

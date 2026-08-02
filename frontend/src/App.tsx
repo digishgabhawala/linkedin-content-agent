@@ -14,6 +14,7 @@ import { ImageStatus } from './components/ImageStatus'
 import { PostPreview } from './components/PostPreview'
 import { FeedbackForm } from './components/FeedbackForm'
 import { HistorySidebar } from './components/HistorySidebar'
+import { SceneAssetsPanel } from './components/SceneAssetsPanel'
 
 export default function App() {
   const { post, setPost } = usePostPolling(null)
@@ -99,6 +100,10 @@ export default function App() {
     if (p) setPost(p)
   }
 
+  async function handleForgetAsset(name: string) {
+    await run(() => api.deleteSceneAsset(name))
+  }
+
   async function handleGenerateImage() {
     if (!post) return
     setImageError(null)
@@ -141,12 +146,15 @@ export default function App() {
 
       <div className="mx-auto max-w-5xl px-6 py-8 flex gap-6">
         {history.length > 0 && (
-          <HistorySidebar
-            history={history}
-            activeId={post?.id ?? null}
-            onSelect={selectFromHistory}
-            onNew={startNew}
-          />
+          <div className="w-64 shrink-0 space-y-4">
+            <HistorySidebar
+              history={history}
+              activeId={post?.id ?? null}
+              onSelect={selectFromHistory}
+              onNew={startNew}
+            />
+            <SceneAssetsPanel />
+          </div>
         )}
 
         <main className="flex-1 space-y-6">
@@ -188,6 +196,7 @@ export default function App() {
                 post={post}
                 onUpdateScene={handleUpdateScene}
                 onGenerateImage={handleGenerateImage}
+                onForgetAsset={handleForgetAsset}
                 loading={busy}
                 error={imageError}
               />
@@ -205,6 +214,8 @@ export default function App() {
                 post={post}
                 onFinalize={handleFinalize}
                 onRegenerateImage={handleGenerateImage}
+                onUpdateScene={handleUpdateScene}
+                onForgetAsset={handleForgetAsset}
                 loading={busy}
               />
               <FeedbackForm onSubmit={handleFeedback} />

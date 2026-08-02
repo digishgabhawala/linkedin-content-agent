@@ -26,12 +26,13 @@ from __future__ import annotations
 
 import json
 import random
+import re
 
 import httpx
 from sqlalchemy.orm import Session
 
 from ..config import settings
-from ..db.models import Post, PostDraft
+from ..db.models import Post, PostDraft, SceneAsset
 from ..agents.category_agent import infer_category
 from ..agents.content_sources import load_character_personality, load_user_profile
 from ..agents.draft_agent import (build_escalation_message, clarify_turn, generate_draft,
@@ -393,13 +394,86 @@ async def regenerate_post_draft(db: Session, client: httpx.AsyncClient, post_id:
     return post
 
 
+def _slugify(name: str) -> str:
+    return re.sub(r"[^a-z0-9_]+", "_", name.strip().lower()).strip("_")
+
+
+_REF_PATTERN = re.compile(r"@([a-z0-9_]+)")
+
+
+def _resolve_scene_asset(db: Session, scene: dict) -> tuple[str | None, str | None]:
+    """scene_agent only ever PROPOSES a setting name + detail text -- this
+    decides whether to reuse an existing SceneAsset (persisting a brand new
+    one the first time a name appears, whatever was proposed this time
+    becomes the seed every future post with that name will reuse) or just
+    reference an already-known one. Returns (setting_placeholder, asset_name).
+
+    IMPORTANT: as of 2026-08-02, this returns a short "@name" REFERENCE, not
+    the full detail text -- the full text is only ever looked up at render
+    time, by expand_scene_refs(), never baked into Post.scene_instruction.
+    This was a direct user ask: the fully-expanded text made the saved scene
+    long and hard to read/edit by hand, and baking it in also meant editing
+    an asset's detail_text later never affected posts that had already
+    locked with the old copy. A short reference fixes both -- the stored
+    scene reads like "adjusting a dial, @office, focused" and always reflects
+    whatever "office" currently means, even if edited after this post locked.
+
+    asset_name is None whenever this scene has no named recurring setting,
+    in which case the raw one-off setting_detail is returned as-is (nothing
+    to reference by name -- see scene_agent's minimal-grounding docs for why
+    this is never dropped even for unnamed metaphor scenes)."""
+    name = scene.get("setting_name")
+    if not name:
+        return scene.get("setting_detail"), None
+    slug = _slugify(str(name))
+    if not slug:
+        return scene.get("setting_detail"), None
+    existing = db.query(SceneAsset).filter(SceneAsset.name == slug).first()
+    if not existing:
+        detail = scene.get("setting_detail")
+        if not detail:
+            return None, None
+        db.add(SceneAsset(name=slug, detail_text=detail))
+    return f"@{slug}", slug
+
+
+def _assemble_scene_text(scene: dict, setting_detail: str | None) -> str:
+    parts = [scene["action"]]
+    if setting_detail:
+        parts.append(setting_detail)
+    parts.append(scene["angle"])
+    parts.append(scene["mood"])
+    return ", ".join(p for p in parts if p)
+
+
+def expand_scene_refs(db: Session, scene_instruction: str) -> str:
+    """Expands every "@name" reference in a scene_instruction into that
+    SceneAsset's CURRENT detail_text. Called only right before the prompt is
+    actually sent to forge2 (image_service.py) -- the expanded text is never
+    persisted, so an asset edited or forgotten after a post locked is always
+    reflected at render time. A reference to a since-forgotten asset expands
+    to nothing (dropped, not left as a bare unresolved "@name" -- a stray "@"
+    token would just confuse the image model) and any resulting double comma
+    or extra whitespace from a dropped reference is cleaned up."""
+    def _replace(m: re.Match) -> str:
+        asset = db.query(SceneAsset).filter(SceneAsset.name == m.group(1)).first()
+        return asset.detail_text if asset else ""
+
+    expanded = _REF_PATTERN.sub(_replace, scene_instruction)
+    expanded = re.sub(r",\s*,", ",", expanded)
+    expanded = re.sub(r"\s{2,}", " ", expanded)
+    return expanded.strip(" ,")
+
+
 async def lock_post(db: Session, client: httpx.AsyncClient, post_id: str) -> Post:
     post = get_post(db, post_id)
     if post.status != "drafting":
         raise PostServiceError(f"post {post_id} is not in drafting state "
                                f"(status={post.status})")
     scene = await derive_scene(client, post.post_text)
-    post.scene_instruction = scene
+    setting_detail, asset_name = _resolve_scene_asset(db, scene)
+    post.scene_instruction = _assemble_scene_text(scene, setting_detail)
+    post.scene_asset_name = asset_name
     post.seed = random.randint(1, 999_999)
     post.status = "locked"
     db.commit()
@@ -408,15 +482,50 @@ async def lock_post(db: Session, client: httpx.AsyncClient, post_id: str) -> Pos
 
 
 def update_scene(db: Session, post_id: str, scene_instruction: str) -> Post:
-    """Let the user edit the derived scene before triggering the real (15-20
-    min) render -- only while locked and before image generation has started."""
+    """Let the user edit the scene text -- either before the first render
+    (status=="locked") or after seeing a finished/failed image and wanting a
+    small targeted change (status in image_ready/image_failed) before
+    clicking regenerate, e.g. "drop the cube, keep everything else." Not
+    valid while image_queued -- a render is actively using the current text.
+    Clears scene_asset_name: once hand-edited, the text is no longer
+    guaranteed to reflect the stored asset it started from."""
     post = get_post(db, post_id)
-    if post.status != "locked":
-        raise PostServiceError(f"post {post_id} is not locked (status={post.status})")
+    if post.status not in ("locked", "image_ready", "image_failed"):
+        raise PostServiceError(
+            f"post {post_id} scene can't be edited mid-render (status={post.status})")
     post.scene_instruction = scene_instruction
+    post.scene_asset_name = None
     db.commit()
     db.refresh(post)
     return post
+
+
+def list_scene_assets(db: Session) -> list[SceneAsset]:
+    return db.query(SceneAsset).order_by(SceneAsset.name.asc()).all()
+
+
+def update_scene_asset(db: Session, name: str, detail_text: str) -> SceneAsset:
+    asset = db.query(SceneAsset).filter(SceneAsset.name == name).first()
+    if asset is None:
+        raise PostServiceError(f"scene asset {name!r} not found")
+    asset.detail_text = detail_text
+    db.commit()
+    db.refresh(asset)
+    return asset
+
+
+def delete_scene_asset(db: Session, name: str) -> None:
+    """The user's stated "I don't want the same coffee shop again" flow --
+    delete the asset and the next post whose scene proposes that same name
+    seeds a fresh detail description from scratch. No variant-numbering
+    system (e.g. "coffee_shop_2") built for this yet -- simplest thing that
+    satisfies the stated need; revisit only if losing the old description
+    entirely turns out to matter in practice."""
+    asset = db.query(SceneAsset).filter(SceneAsset.name == name).first()
+    if asset is None:
+        raise PostServiceError(f"scene asset {name!r} not found")
+    db.delete(asset)
+    db.commit()
 
 
 def finalize_post(db: Session, post_id: str) -> Post:

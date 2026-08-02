@@ -29,6 +29,7 @@ export interface Post {
   recalibration_count: number
   escalation_reason: string | null
   scene_instruction: string | null
+  scene_asset_name: string | null
   seed: number | null
   image_url: string | null
   has_final_image: boolean
@@ -46,6 +47,13 @@ export interface PostDraft {
   generated_by: string
   user_instruction: string | null
   created_at: string | null
+}
+
+export interface SceneAsset {
+  name: string
+  detail_text: string
+  created_at: string | null
+  updated_at: string | null
 }
 
 export interface Feedback {

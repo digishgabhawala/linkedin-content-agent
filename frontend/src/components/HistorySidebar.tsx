@@ -19,7 +19,7 @@ const STATUS_COLOR: Record<string, string> = {
 
 export function HistorySidebar({ history, activeId, onSelect, onNew }: Props) {
   return (
-    <aside className="w-64 shrink-0 space-y-2">
+    <aside className="space-y-2">
       <button
         onClick={onNew}
         className="w-full rounded-lg border border-dashed border-gray-300 px-3 py-2 text-xs font-medium text-gray-600 hover:border-blue-300 hover:bg-blue-50"

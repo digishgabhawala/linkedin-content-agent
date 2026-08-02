@@ -77,6 +77,42 @@ def load_all_examples(limit_per_category: int = 2) -> str:
     return "\n\n---\n\n".join(parts)
 
 
+def _scene_mood_blocks() -> dict[str, list[str]]:
+    """Parses content_config/scene_examples.md into {mood: [example, ...]},
+    same "## MOOD: <name>" / "### Example N" delimiter convention as
+    _example_blocks() uses for example_posts.md."""
+    path = Path(settings.scene_examples_path)
+    if not path.exists():
+        return {}
+    text = path.read_text()
+    blocks: dict[str, list[str]] = {}
+    for chunk in text.split("## MOOD: ")[1:]:
+        name, _, rest = chunk.partition("\n")
+        mood_body = rest.split("\n---", 1)[0].strip()
+        examples = [e.strip() for e in mood_body.split("### Example ")[1:] if e.strip()]
+        blocks[name.strip()] = examples
+    return blocks
+
+
+def load_scene_examples(sample_size: int = 5) -> str:
+    """A random SAMPLE of mood archetypes (one random example each), not the
+    full file and not a fixed set -- this is what prevents any single
+    worked example from becoming a sticky template (see
+    scene_examples.md's own docstring for the bug this fixes). Re-sampled
+    fresh on every call, same rotation principle as
+    load_example_for_category, adapted here since scene_agent doesn't know
+    the post's mood ahead of time the way draft_agent knows its category."""
+    blocks = _scene_mood_blocks()
+    moods = list(blocks.keys())
+    random.shuffle(moods)
+    chosen = []
+    for mood in moods[:sample_size]:
+        example = random.choice(blocks[mood])
+        _, _, body = example.partition("\n")
+        chosen.append(f"MOOD: {mood}\n{body.strip()}")
+    return "\n\n".join(chosen)
+
+
 def load_character_personality(character_id: str) -> str | None:
     """Reads the character's `personality` field straight off character.json.
     Returns None if the character/card doesn't exist -- callers should
