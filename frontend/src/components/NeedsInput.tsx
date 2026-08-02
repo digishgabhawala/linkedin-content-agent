@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { Post } from '../types'
 
 interface Props {
@@ -10,6 +10,20 @@ interface Props {
 
 export function NeedsInput({ post, onSubmitInfo, onAcceptDraft, loading }: Props) {
   const [info, setInfo] = useState('')
+  const [elapsed, setElapsed] = useState(0)
+
+  // Submitting here always re-runs the full draft -> judge -> recalibrate
+  // pipeline (unlike clarify, where only the final answer does) -- see the
+  // matching note in ClarifyChat.tsx for why this needs explicit feedback.
+  useEffect(() => {
+    if (!loading) {
+      setElapsed(0)
+      return
+    }
+    const start = Date.now()
+    const id = setInterval(() => setElapsed(Math.round((Date.now() - start) / 1000)), 1000)
+    return () => clearInterval(id)
+  }, [loading])
 
   function submit() {
     if (!info.trim()) return
@@ -58,6 +72,12 @@ export function NeedsInput({ post, onSubmitInfo, onAcceptDraft, loading }: Props
           Accept current draft as-is
         </button>
       </div>
+
+      {loading && (
+        <p className="text-xs text-gray-500 animate-pulse">
+          Writing and scoring a fresh draft — this can take 1-2 minutes. ({elapsed}s)
+        </p>
+      )}
     </div>
   )
 }

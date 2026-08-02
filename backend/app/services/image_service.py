@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 
 from ..config import settings
 from ..db.models import Post
+from .post_service import expand_scene_refs
 
 
 class ImageServiceError(Exception):
@@ -75,10 +76,18 @@ def start_image_generation(db: Session, post_id: str) -> Post:
     if post.status in ("image_failed", "image_ready"):
         post.seed = random.randint(1, 999_999)
 
+    # scene_instruction may hold short "@name" references (e.g. "@office")
+    # rather than full backdrop text -- expand those to their current
+    # detail_text here, at the last possible moment, never persisted. This
+    # is what makes editing a SceneAsset's detail_text retroactively apply
+    # to any post that still references it, instead of baking in a stale
+    # copy at lock time (see post_service.expand_scene_refs).
+    task = expand_scene_refs(db, post.scene_instruction)
+
     callback_url = f"{settings.image_callback_base_url}/api/internal/image-callback"
     cmd = [
         settings.comfyui_env_python, "-m", "forge2.cli", "generate",
-        post.character_id, post.scene_instruction,
+        post.character_id, task,
         "--seed", str(post.seed),
         "--callback-url", callback_url,
         "--job-id", post.id,

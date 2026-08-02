@@ -23,6 +23,7 @@ _NEW_POST_COLUMNS = {
     "weighted_score": "FLOAT",
     "recalibration_count": "INTEGER NOT NULL DEFAULT 0",
     "escalation_reason": "TEXT",
+    "scene_asset_name": "TEXT",
 }
 
 

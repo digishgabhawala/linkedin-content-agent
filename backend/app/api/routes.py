@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from ..db.database import get_db
-from ..db.models import Post, PostDraft
+from ..db.models import Post, PostDraft, SceneAsset
 from ..services import feedback_service as fs
 from ..services import image_service as isvc
 from ..services import post_service as ps
@@ -45,6 +45,10 @@ class AdditionalInfoRequest(BaseModel):
 
 class SceneUpdateRequest(BaseModel):
     scene_instruction: str
+
+
+class SceneAssetUpdateRequest(BaseModel):
+    detail_text: str
 
 
 class FeedbackRequest(BaseModel):
@@ -88,6 +92,7 @@ def _serialize_post(post: Post) -> dict:
         "recalibration_count": post.recalibration_count,
         "escalation_reason": post.escalation_reason,
         "scene_instruction": post.scene_instruction,
+        "scene_asset_name": post.scene_asset_name,
         "seed": post.seed,
         "image_url": _image_url(post),
         "has_final_image": post.final_image_path is not None,
@@ -125,6 +130,15 @@ def _post_or_404(db: Session, post_id: str) -> Post:
     if post is None:
         raise HTTPException(status_code=404, detail=f"post {post_id} not found")
     return post
+
+
+def _serialize_scene_asset(asset: SceneAsset) -> dict:
+    return {
+        "name": asset.name,
+        "detail_text": asset.detail_text,
+        "created_at": asset.created_at.isoformat() if asset.created_at else None,
+        "updated_at": asset.updated_at.isoformat() if asset.updated_at else None,
+    }
 
 
 # --------------------------------------------------------------------------
@@ -271,6 +285,32 @@ def finalize(post_id: str, db: Session = Depends(get_db)):
     except ps.PostServiceError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return _serialize_post(post)
+
+
+@router.get("/scene-assets")
+def list_scene_assets(db: Session = Depends(get_db)):
+    return [_serialize_scene_asset(a) for a in ps.list_scene_assets(db)]
+
+
+@router.patch("/scene-assets/{name}")
+def update_scene_asset(name: str, req: SceneAssetUpdateRequest, db: Session = Depends(get_db)):
+    try:
+        asset = ps.update_scene_asset(db, name, req.detail_text)
+    except ps.PostServiceError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    return _serialize_scene_asset(asset)
+
+
+@router.delete("/scene-assets/{name}")
+def delete_scene_asset(name: str, db: Session = Depends(get_db)):
+    """Deletes the stored asset so the next post whose scene proposes this
+    same name seeds a fresh description -- the "I don't want the same
+    coffee shop again" flow."""
+    try:
+        ps.delete_scene_asset(db, name)
+    except ps.PostServiceError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    return {"status": "ok"}
 
 
 @router.post("/internal/image-callback")

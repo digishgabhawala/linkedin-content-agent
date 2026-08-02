@@ -1,4 +1,4 @@
-import type { Post, PostDraft, Feedback } from './types'
+import type { Post, PostDraft, Feedback, SceneAsset } from './types'
 
 const BASE = '/api'
 
@@ -59,4 +59,15 @@ export const api = {
   generateImage: (id: string) => req<Post>(`/posts/${id}/generate-image`, { method: 'POST' }),
 
   finalize: (id: string) => req<Post>(`/posts/${id}/finalize`, { method: 'POST' }),
+
+  listSceneAssets: () => req<SceneAsset[]>('/scene-assets'),
+
+  updateSceneAsset: (name: string, detail_text: string) =>
+    req<SceneAsset>(`/scene-assets/${name}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ detail_text }),
+    }),
+
+  deleteSceneAsset: (name: string) =>
+    req<{ status: string }>(`/scene-assets/${name}`, { method: 'DELETE' }),
 }
