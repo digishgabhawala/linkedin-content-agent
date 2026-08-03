@@ -1,9 +1,38 @@
 # What's been verified, and where to see it
 
-No automated test suite exists yet. Every check described here was run live
-against real Ollama calls, a real SQLite database, and (for the image path)
-a real ComfyUI render -- nothing was mocked except where explicitly noted.
-This file is the index; the actual evidence lives in two places:
+## Automated tests
+
+```bash
+cd backend
+.venv/bin/pip install -r requirements-dev.txt
+.venv/bin/ruff check .
+.venv/bin/pytest tests/ -v
+
+cd ../frontend
+npm run lint
+npx tsc --noEmit
+```
+
+`backend/tests/` covers the deterministic, non-LLM logic in
+`post_service.py`, `taxonomy.py`, and `draft_agent.py`'s output cleanup: the
+`length_fit` scoring bands, the `@name` scene-asset resolve/expand cycle
+(including the retroactive-edit guarantee -- editing an asset after a post
+locked must change what that post renders with), pillar-weight sums per
+category, and the trailing-metadata/quote-stripping regexes. Uses an
+in-memory SQLite fixture, independent of the real app database.
+
+**What automated tests deliberately do NOT cover**: `clarify_turn`,
+`generate_draft`/`regenerate_draft`, `score_post`, `infer_category`,
+`derive_scene` -- every one of these is a live Ollama call, and the actual
+hard-won knowledge in this project (see below) is calibration behavior a
+mock would give false confidence about. Those are verified live instead.
+
+## Everything else: verified live, not mocked
+
+Everything below was run live against real Ollama calls, a real SQLite
+database, and (for the image path) a real ComfyUI render -- nothing was
+mocked except where explicitly noted. This file is the index; the actual
+evidence lives in two places:
 
 ```bash
 git log --oneline          # one commit per task/fix -- each message
@@ -79,15 +108,29 @@ looking at it, not by trusting the API response. The final, genuinely
 correct end-to-end render (`e32bf3b2-...` in the test DB, cleaned up after)
 was visually confirmed: the correct character, correct pose, correct scene.
 
+## Content-quality pipeline (category/gates/pillars/recalibration)
+
+Built and verified live in a later session than the commit table above (not
+yet indexed commit-by-commit here): category inference, gate/optimization
+pillar scoring, automatic recalibration, the thin-material escalation gate,
+and the deterministic `length_fit` override were all exercised against real
+briefs of varying quality (rich briefs producing strong drafts, thin briefs
+correctly escalating instead of drafting anyway) and real Ollama judge
+calls. The `@name` scene-asset system (recurring backdrops, retroactive
+edits) was similarly verified live end-to-end, including rendering real
+images through character-forge-v2 with an expanded `@office`-style
+reference. See `git log` for the individual commits.
+
 ## What is NOT covered
 
-- No automated regression tests (pytest, vitest, or otherwise).
-- No interactive browser testing (no browser automation tool was available
-  in the build session) -- the frontend's build/type-check is clean and its
-  API contract is verified, but clicking through the actual UI has not been
-  done by anyone yet. Worth a manual pass before relying on this for real
-  posts.
+- No interactive browser automation (no such tool was available in the
+  build sessions) -- the frontend's build/type-check/lint are clean and its
+  API contract is verified, but clicking through the actual UI end-to-end
+  has been done manually by the maintainer, not captured as a repeatable
+  test. Worth a fresh manual pass before relying on this for real posts.
 - The `lightning` speed profile (fast/low-quality image drafts) was never
   exercised -- all real renders used `full`.
 - Feedback capture is tested; feedback consumption is not built yet (see
   README's Upcoming section), so there's nothing to test there.
+- Pillar weights (`taxonomy.py`) are unweighted starting defaults, not
+  calibrated against a body of real drafts yet.

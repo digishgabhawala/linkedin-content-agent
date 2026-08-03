@@ -1,9 +1,12 @@
 # Content quality design: categories, pillars, scoring, recalibration
 
-Design lock for the product-direction pivot discussed 2026-07-17. Not built yet --
-this document is the reference for implementation, superseding backlog items #21
-(per-character personas) and #23 (remove clarify cap), which are now specific
-pieces of this larger design rather than standalone items.
+Design lock for the product-direction pivot discussed 2026-07-17. **Status:
+built and live-verified** (see TESTING.md) -- this document remains the
+design reference/rationale; superseded backlog items #21 (per-character
+personas) and #23 (remove clarify cap) are now specific pieces of this
+larger design rather than standalone items. The "explicitly deferred"
+section at the bottom is still accurate as of this writing -- those pieces
+remain unbuilt.
 
 ## Vision
 
