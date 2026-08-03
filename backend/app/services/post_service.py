@@ -31,16 +31,26 @@ import re
 import httpx
 from sqlalchemy.orm import Session
 
-from ..config import settings
-from ..db.models import Post, PostDraft, SceneAsset
 from ..agents.category_agent import infer_category
 from ..agents.content_sources import load_character_personality, load_user_profile
-from ..agents.draft_agent import (build_escalation_message, clarify_turn, generate_draft,
-                                  regenerate_draft)
+from ..agents.draft_agent import (
+    build_escalation_message,
+    clarify_turn,
+    generate_draft,
+    regenerate_draft,
+)
 from ..agents.judge_agent import score_post
 from ..agents.scene_agent import derive_scene
-from ..agents.taxonomy import (FIX_TYPE, GATE_PILLARS, GATE_THRESHOLD, OPTIMIZATION_PILLARS,
-                               RECALIBRATION_THRESHOLD, weighted_score)
+from ..agents.taxonomy import (
+    FIX_TYPE,
+    GATE_PILLARS,
+    GATE_THRESHOLD,
+    OPTIMIZATION_PILLARS,
+    RECALIBRATION_THRESHOLD,
+    weighted_score,
+)
+from ..config import settings
+from ..db.models import Post, PostDraft, SceneAsset
 
 
 class PostServiceError(Exception):

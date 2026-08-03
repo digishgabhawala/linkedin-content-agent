@@ -29,8 +29,12 @@ import re
 import httpx
 
 from ..config import settings
-from .content_sources import (load_character_personality, load_example_for_category,
-                              load_skill, load_user_profile)
+from .content_sources import (
+    load_character_personality,
+    load_example_for_category,
+    load_skill,
+    load_user_profile,
+)
 from .taxonomy import CATEGORIES
 
 _FRAMING = """You are a ghostwriter helping a person build their LinkedIn presence. You write \

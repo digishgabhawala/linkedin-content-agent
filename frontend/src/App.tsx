@@ -28,7 +28,7 @@ export default function App() {
 
   // keep the sidebar's status labels in sync once the active post changes
   useEffect(() => {
-    if (post) refreshHistory()
+    if (post?.status) refreshHistory()
   }, [post?.status])
 
   async function refreshHistory() {

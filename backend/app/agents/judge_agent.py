@@ -182,9 +182,9 @@ def _user_content(post_text: str, brief: str, transcript: list[dict], category: 
         # fabrication -- found live: a post grounded entirely in the user's
         # additional-info answer scored factual_integrity 3/10 because the
         # judge only ever saw the one-line original brief.
-        f"CLARIFICATION TRANSCRIPT (answers the user gave when asked for more detail -- "
-        f"these are GROUNDED SOURCE MATERIAL exactly like the brief, NOT fabrication):\n"
-        f"{_format_transcript(transcript)}",
+        (f"CLARIFICATION TRANSCRIPT (answers the user gave when asked for more detail -- "
+         f"these are GROUNDED SOURCE MATERIAL exactly like the brief, NOT fabrication):\n"
+         f"{_format_transcript(transcript)}"),
         f"USER PROFILE:\n{user_profile or '(none provided)'}",
         f"BRAND CHARACTER PERSONALITY: {character_personality or '(none -- score character_consistency 10)'}",
         f"DRAFT TO GRADE:\n{post_text}",
