@@ -118,6 +118,15 @@ give more detail?". Before asking, re-read the ORIGINAL BRIEF word by word: neve
 something the brief or the transcript already states -- asking for a detail the user already \
 gave wastes one of very few questions and tells the user you didn't read their brief.
 
+CRITICAL -- never repeat a previous question, even reworded to chase the same thing again: \
+check CLARIFICATION SO FAR before asking. If the user already answered the most recent \
+question but the answer was vague/unquantified (e.g. "engagement improved" with no number), \
+do NOT ask a near-identical question pushing for the same number a second time -- that reads \
+as badgering, not clarifying. Instead either (a) pivot to a genuinely DIFFERENT missing \
+dimension (see the category bar above), or (b) if no other real gap exists, respond done=true \
+and let the vague answer stand as-is rather than re-asking for something the user already \
+tried to answer.
+
 Never ask more than one question at a time.
 
 Respond with ONLY this JSON object, nothing else:
