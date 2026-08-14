@@ -1,23 +1,25 @@
-"""image_service.py -- spawns character-forge-v2 as a detached subprocess and
-receives its completion callback.
+"""image_service.py -- submits image generation as a task to the task-queue
+service (see the sibling task-queue repo) instead of spawning
+character-forge-v2 directly. Never imports forge2 or task-queue's own code
+-- HTTP only, per this workspace's "standalone, shares nothing" convention.
 
-Never imports forge2 -- shells out via subprocess.Popen only, per this
-workspace's "each tool is a standalone sibling directory, shares nothing"
-convention. Popen returns instantly (fire-and-forget); the forge2 subprocess
-POSTs back to /api/internal/image-callback when it finishes (see
-character-forge-v2/forge2/stages/generate.py's callback_url support).
-
-job_id IS post_id -- no separate mapping table needed, Post.id is already a
-unique key the callback can look up directly.
+This replaces the original subprocess.Popen + webhook-callback design.
+That design assumed image generation always happened on THIS machine; the
+task queue removes that assumption -- a worker running anywhere (this
+machine, a friend's laptop, a Colab GPU session) can claim and complete the
+task, and this service just polls for the result. Polling happens lazily,
+on read (see sync_image_task, called from GET /posts/{id}), not via a
+background thread -- same "nobody needs it noticed until someone actually
+looks" reasoning as the task-queue's own lease-reclaim logic.
 """
 from __future__ import annotations
 
 import random
 import shutil
-import subprocess
 from datetime import datetime, timedelta
 from pathlib import Path
 
+import httpx
 from sqlalchemy.orm import Session
 
 from ..config import settings
@@ -29,17 +31,7 @@ class ImageServiceError(Exception):
     """Raised for invalid state transitions."""
 
 
-class ImageBusyError(ImageServiceError):
-    """Raised when another post is already image_queued -- maps to HTTP 409."""
-
-
-def _generated_images_dir() -> Path:
-    d = Path(settings.generated_dir) / "images"
-    d.mkdir(parents=True, exist_ok=True)
-    return d
-
-
-def start_image_generation(db: Session, post_id: str) -> Post:
+async def start_image_generation(db: Session, client: httpx.AsyncClient, post_id: str) -> Post:
     post = db.get(Post, post_id)
     if post is None:
         raise ImageServiceError(f"post {post_id} not found")
@@ -52,27 +44,12 @@ def start_image_generation(db: Session, post_id: str) -> Post:
         raise ImageServiceError(
             f"post {post_id} is not locked or retryable (status={post.status})")
 
-    # Single-GPU pipeline, single-user tool -- no queue, just refuse a second
-    # concurrent job rather than silently racing two ComfyUI renders.
-    in_flight = (db.query(Post)
-                .filter(Post.status == "image_queued")
-                .filter(Post.id != post_id)
-                .first())
-    if in_flight is not None:
-        raise ImageBusyError(
-            f"post {in_flight.id} is already generating an image -- wait for it "
-            "to finish (single-GPU pipeline, one job at a time)")
-
-    # A retry or re-roll MUST get a fresh seed. ComfyUI caches per-node
-    # outputs keyed on exact input values (including seed); resubmitting the
-    # identical seed + hero.png + instruction is a 100% cache hit that
-    # replays whatever was cached last time -- including a corrupted result,
-    # or just the exact same "good but not quite right" image the user is
-    # trying to re-roll away from -- in ~0ms with no real compute at all.
-    # Confirmed live: a retry with the original seed came back "image_ready"
-    # in under 20s and ComfyUI's own history showed execution_cached for
-    # every node, timestamp-identical to execution_success (i.e. it never
-    # actually rendered anything).
+    # A retry or re-roll MUST get a fresh seed -- ComfyUI/forge2 caches
+    # per-node outputs keyed on exact input values including seed;
+    # resubmitting the identical seed replays whatever was cached last time
+    # (including a corrupted result) with no real compute at all. Confirmed
+    # live during the original Popen-based design; still true here since
+    # the worker on the other end is the same forge2.
     if post.status in ("image_failed", "image_ready"):
         post.seed = random.randint(1, 999_999)
 
@@ -82,19 +59,16 @@ def start_image_generation(db: Session, post_id: str) -> Post:
     # is what makes editing a SceneAsset's detail_text retroactively apply
     # to any post that still references it, instead of baking in a stale
     # copy at lock time (see post_service.expand_scene_refs).
-    task = expand_scene_refs(db, post.scene_instruction)
+    task_text = expand_scene_refs(db, post.scene_instruction)
 
-    callback_url = f"{settings.image_callback_base_url}/api/internal/image-callback"
-    cmd = [
-        settings.comfyui_env_python, "-m", "forge2.cli", "generate",
-        post.character_id, task,
-        "--seed", str(post.seed),
-        "--callback-url", callback_url,
-        "--job-id", post.id,
-    ]
-    subprocess.Popen(cmd, cwd=settings.character_forge_v2_path,
-                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    resp = await client.post(f"{settings.task_queue_url}/api/tasks", json={
+        "task_type": "image_generation",
+        "payload": {"character_id": post.character_id, "task": task_text, "seed": post.seed},
+    }, timeout=30)
+    resp.raise_for_status()
+    task = resp.json()
 
+    post.image_task_id = task["id"]
     post.status = "image_queued"
     post.image_started_at = datetime.utcnow()
     post.image_job_error = None
@@ -103,34 +77,56 @@ def start_image_generation(db: Session, post_id: str) -> Post:
     return post
 
 
-def handle_image_callback(db: Session, job_id: str, ok: bool,
-                          image_path: str | None = None,
-                          error: str | None = None) -> Post:
-    """Called only by the forge2 subprocess, never by the frontend."""
-    post = db.get(Post, job_id)
-    if post is None:
-        raise ImageServiceError(f"callback for unknown post/job_id {job_id}")
+async def sync_image_task(db: Session, client: httpx.AsyncClient, post: Post) -> Post:
+    """Checks the task-queue for this post's in-flight image task and
+    updates the post if it's since finished. No-op if the post isn't
+    actually waiting on one. Called from GET /posts/{id} so the frontend's
+    existing 3s poll is what drives this -- no separate background poller
+    needed."""
+    if post.status != "image_queued" or not post.image_task_id:
+        return post
 
-    if ok:
-        dest = _generated_images_dir() / f"{post.id}.png"
-        shutil.copy(image_path, dest)
-        post.final_image_path = str(dest)
+    try:
+        resp = await client.get(f"{settings.task_queue_url}/api/tasks/{post.image_task_id}", timeout=15)
+        resp.raise_for_status()
+        task = resp.json()
+
+        if task["status"] == "done":
+            artifact_id = task["result"]["image_artifact_id"]
+            artifact_resp = await client.get(
+                f"{settings.task_queue_url}/api/artifacts/{artifact_id}", timeout=15)
+            artifact_resp.raise_for_status()
+            post.final_image_path = artifact_resp.json()["url"]
+    except httpx.HTTPError:
+        # Transient network blip / task-queue redeploy shouldn't break
+        # viewing this post's status -- the next 3s poll just tries again.
+        # is_stalled() (a separate, time-based check) is what actually
+        # surfaces a genuinely stuck render to the user.
+        return post
+
+    if task["status"] == "done":
         post.status = "image_ready"
         post.image_job_error = None
-    else:
+        db.commit()
+        db.refresh(post)
+    elif task["status"] == "failed":
         post.status = "image_failed"
-        post.image_job_error = error or "unknown error"
+        post.image_job_error = task.get("error") or "unknown error"
+        db.commit()
+        db.refresh(post)
+    # queued/claimed: still in flight, nothing to update yet.
 
-    db.commit()
-    db.refresh(post)
     return post
 
 
 def is_stalled(post: Post) -> bool:
     """True once a queued job has run past the configured stall timeout with
-    no callback yet. Surfaced via GET /posts/{id} so the frontend can stop
-    polling silently forever and tell the user to go check ComfyUI -- there's
-    no watchdog daemon, this is a read-time check only."""
+    no result yet. Surfaced via GET /posts/{id} so the frontend can stop
+    polling silently forever and tell the user something's wrong -- there's
+    no watchdog daemon, this is a read-time check only. Independent of the
+    task-queue's own lease/reclaim mechanism (which governs whether a
+    *worker* gets to keep a claimed task) -- this is purely "has it been a
+    suspiciously long time from this app's point of view."""
     if post.status != "image_queued" or post.image_started_at is None:
         return False
     elapsed = datetime.utcnow() - post.image_started_at
@@ -140,10 +136,15 @@ def is_stalled(post: Post) -> bool:
 def ensure_placeholder_image(character_id: str) -> Path | None:
     """Copy hero.png into our own generated/images/ on first use so it's
     servable under the same /generated static mount as real renders. Direct
-    filesystem read of character-forge-v2's workspace -- no API call needed,
-    both are local processes on the same machine. Returns None if that
-    character's hero.png doesn't exist yet (no hero locked)."""
-    dest = _generated_images_dir() / f"placeholder_{character_id}.png"
+    filesystem read of character-forge-v2's workspace -- no API call needed
+    when both are local processes on the same machine. Returns None if that
+    character's hero.png doesn't exist (no hero locked, OR
+    character-forge-v2 simply isn't present on this machine at all -- e.g.
+    once image generation runs entirely on a separate worker machine, this
+    just gracefully stops offering a placeholder rather than erroring)."""
+    d = Path(settings.generated_dir) / "images"
+    d.mkdir(parents=True, exist_ok=True)
+    dest = d / f"placeholder_{character_id}.png"
     if dest.exists():
         return dest
     hero = Path(settings.character_forge_v2_path) / "workspace" / character_id / "hero.png"

@@ -57,19 +57,20 @@ class FeedbackRequest(BaseModel):
     post_text_snippet: str | None = None
 
 
-class ImageCallbackRequest(BaseModel):
-    job_id: str
-    ok: bool
-    image_path: str | None = None
-    error: str | None = None
-
-
 # --------------------------------------------------------------------------
 # serialization
 # --------------------------------------------------------------------------
 
 def _image_url(post: Post) -> str | None:
     if post.final_image_path:
+        # A full external URL (Supabase Storage, via the task-queue's
+        # artifact store) once image generation moved off direct
+        # subprocess.Popen -- vs. the older convention of a local
+        # filesystem path served under our own /generated mount. Both
+        # still occur: existing rows from before this change hold a local
+        # path, new ones hold a URL.
+        if post.final_image_path.startswith(("http://", "https://")):
+            return post.final_image_path
         return f"/generated/images/{Path(post.final_image_path).name}"
     placeholder = isvc.ensure_placeholder_image(post.character_id)
     return f"/generated/images/{placeholder.name}" if placeholder else None
@@ -163,8 +164,11 @@ def list_posts(db: Session = Depends(get_db)):
 
 
 @router.get("/posts/{post_id}")
-def get_post(post_id: str, db: Session = Depends(get_db)):
-    return _serialize_post(_post_or_404(db, post_id))
+async def get_post(post_id: str, db: Session = Depends(get_db),
+                   client: httpx.AsyncClient = Depends(get_http_client)):
+    post = _post_or_404(db, post_id)
+    post = await isvc.sync_image_task(db, client, post)
+    return _serialize_post(post)
 
 
 @router.post("/posts/{post_id}/clarify")
@@ -266,12 +270,11 @@ def update_scene(post_id: str, req: SceneUpdateRequest, db: Session = Depends(ge
 
 
 @router.post("/posts/{post_id}/generate-image")
-def generate_image(post_id: str, db: Session = Depends(get_db)):
+async def generate_image(post_id: str, db: Session = Depends(get_db),
+                         client: httpx.AsyncClient = Depends(get_http_client)):
     _post_or_404(db, post_id)
     try:
-        post = isvc.start_image_generation(db, post_id)
-    except isvc.ImageBusyError as e:
-        raise HTTPException(status_code=409, detail=str(e))
+        post = await isvc.start_image_generation(db, client, post_id)
     except isvc.ImageServiceError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return _serialize_post(post)
@@ -309,16 +312,5 @@ def delete_scene_asset(name: str, db: Session = Depends(get_db)):
     try:
         ps.delete_scene_asset(db, name)
     except ps.PostServiceError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-    return {"status": "ok"}
-
-
-@router.post("/internal/image-callback")
-def image_callback(req: ImageCallbackRequest, db: Session = Depends(get_db)):
-    """Called only by the forge2 subprocess (see image_service.py), never
-    by the frontend."""
-    try:
-        isvc.handle_image_callback(db, req.job_id, req.ok, req.image_path, req.error)
-    except isvc.ImageServiceError as e:
         raise HTTPException(status_code=404, detail=str(e))
     return {"status": "ok"}

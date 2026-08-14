@@ -42,8 +42,16 @@ class Post(Base):
     # the source of truth, this just lets the UI point back to it.
     scene_asset_name = Column(String, nullable=True)
     seed = Column(Integer, nullable=True)
+    # A full external URL (Supabase Storage, via the task-queue's artifact
+    # store) once image generation moved off direct subprocess.Popen -- see
+    # image_service.py. Kept the same column/name for backward
+    # compatibility; _image_url() in routes.py distinguishes an external
+    # URL from the older local-filesystem-path convention.
     final_image_path = Column(String, nullable=True)
     image_job_error = Column(Text, nullable=True)
+    # id of the task-queue task tracking this post's in-flight/most-recent
+    # image generation request -- see image_service.py's sync_image_task().
+    image_task_id = Column(String, nullable=True)
 
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

@@ -27,11 +27,16 @@ class Settings(BaseSettings):
     example_posts_path: str = "content_config/example_posts.md"
     scene_examples_path: str = "content_config/scene_examples.md"
 
-    # character-forge-v2 integration, invoked via subprocess.Popen, never
-    # imported -- standalone, shares nothing.
+    # character_forge_v2_path: direct filesystem reads only now (character
+    # personality in content_sources.py, local hero.png placeholder) --
+    # actual image generation no longer shells out to forge2 directly, it
+    # goes through task_queue_url instead (see image_service.py). Kept
+    # separate from the queue so this repo still degrades gracefully
+    # (personality/placeholder just become unavailable, not an error) if
+    # character-forge-v2 isn't present on this machine at all, e.g. once
+    # image generation runs entirely on a separate worker machine.
     character_forge_v2_path: str = str(_WORKSPACE_ROOT / "character-forge-v2")
-    comfyui_env_python: str = str(_WORKSPACE_ROOT / "comfyui-env" / "bin" / "python")
-    image_callback_base_url: str = "http://localhost:11000"
+    task_queue_url: str = "http://127.0.0.1:8000"
     image_stall_timeout_minutes: int = 40
 
     class Config:
