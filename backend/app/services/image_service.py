@@ -64,6 +64,14 @@ async def start_image_generation(db: Session, client: httpx.AsyncClient, post_id
     resp = await client.post(f"{settings.task_queue_url}/api/tasks", json={
         "task_type": "image_generation",
         "payload": {"character_id": post.character_id, "task": task_text, "seed": post.seed},
+        # Explicit, generous lease -- the task-queue's generic default (60 min)
+        # is sized for short tasks, not this one. Found live: a real render on
+        # a loaded Mac took ~2 hours; a 60-min lease expired mid-render and let
+        # a second worker legitimately reclaim and "complete" the task with a
+        # different result while the original worker was still genuinely
+        # working. 240 min matches forge2's own comfy.timeout_s (2h) plus
+        # real headroom, not just the observed worst case.
+        "lease_minutes": 240,
     }, timeout=30)
     resp.raise_for_status()
     task = resp.json()
