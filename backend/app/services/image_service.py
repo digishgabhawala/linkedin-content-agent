@@ -104,6 +104,11 @@ async def sync_image_task(db: Session, client: httpx.AsyncClient, post: Post) ->
         task = resp.json()
         post.image_queue_status = task.get("status")
         post.image_claimed_at = task.get("claimed_at")
+        post.image_worker_id = task.get("claimed_by")
+        post.image_lease_expires_at = task.get("lease_expires_at")
+        post.image_progress_stage = task.get("progress_stage")
+        post.image_progress_message = task.get("progress_message")
+        post.image_progress_updated_at = task.get("progress_updated_at")
 
         if task["status"] == "done":
             artifact_id = task["result"]["image_artifact_id"]
@@ -171,6 +176,24 @@ def is_stalled(post: Post) -> bool:
     if elapsed is None:
         return False
     return elapsed > timedelta(minutes=settings.image_stall_timeout_minutes)
+
+
+def is_worker_lost(post: Post) -> bool:
+    """True when the worker holding this task stopped heartbeating.
+
+    Heartbeating workers renew a short rolling lease (task-queue's
+    ACTIVE_LEASE_MINUTES) every minute, so a claimed task whose lease is
+    already in the past has no live worker. The queue reclaims it lazily on
+    the next claim attempt -- until then it still reads as "claimed". Older
+    workers that never heartbeat keep the producer's 240-min lease and so
+    are only reported lost after that, never early.
+    """
+    if (post.status != "image_queued"
+            or getattr(post, "image_queue_status", None) != "claimed"):
+        return False
+    # _elapsed_since returns now - lease: positive means the lease has passed.
+    past_lease = _elapsed_since(getattr(post, "image_lease_expires_at", None))
+    return past_lease is not None and past_lease > timedelta(0)
 
 
 def ensure_placeholder_image(character_id: str) -> Path | None:
