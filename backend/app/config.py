@@ -11,7 +11,14 @@ _WORKSPACE_ROOT = Path(__file__).resolve().parents[3]
 
 
 class Settings(BaseSettings):
-    db_path: str = "posts.db"
+    # Where the app's data lives -- configuration, never hardcoded. Any
+    # SQLAlchemy URL (e.g. the Supabase pooler,
+    # postgresql+psycopg://...); unset means the local SQLite file at db_path.
+    database_url: str | None = None
+    # Postgres schema holding this app's tables (keeps them apart from other
+    # apps sharing the same Supabase project). Ignored for SQLite.
+    db_schema: str = "linkedin"
+    db_path: str = "posts.db"  # SQLite fallback only
     generated_dir: str = "generated"  # rendered images + placeholder; not source, safe to delete/rebuild
 
     default_character_id: str = "gtee_dev"
