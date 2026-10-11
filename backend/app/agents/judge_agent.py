@@ -24,7 +24,7 @@ import json
 
 import httpx
 
-from ..services.llm_client import chat
+from ..services.llm_client import LLMRequest, chat
 from .content_sources import load_all_examples
 from .taxonomy import GATE_PILLARS, OPTIMIZATION_PILLARS
 
@@ -192,21 +192,21 @@ def _user_content(post_text: str, brief: str, transcript: list[dict], category: 
     return "\n\n".join(parts)
 
 
-async def score_post(client: httpx.AsyncClient, post_text: str, brief: str,
-                     transcript: list[dict], category: str,
-                     character_personality: str | None,
-                     user_profile: str) -> dict[str, dict]:
-    """Returns {pillar_name: {"score": float, "reason": str}, ...} for every
-    pillar in GATE_PILLARS + OPTIMIZATION_PILLARS. Malformed/missing entries
-    fail safe to a score of 0 with a clear reason, rather than silently
-    passing a gate that was never actually graded."""
-    raw = await chat(client, [
+def build_judge_request(post_text: str, brief: str, transcript: list[dict], category: str,
+                        character_personality: str | None, user_profile: str) -> LLMRequest:
+    return LLMRequest([
         {"role": "system", "content": _build_system_prompt()},
         {"role": "user", "content": _user_content(
             post_text, brief, transcript, category, character_personality,
             user_profile)},
     ], temperature=0.15, reasoning=True, response_format="json")
 
+
+def parse_judge(raw: str) -> dict[str, dict]:
+    """{pillar_name: {"score": float, "reason": str}, ...} for every pillar in
+    GATE_PILLARS + OPTIMIZATION_PILLARS. Malformed/missing entries fail safe
+    to a score of 0 with a clear reason, rather than silently passing a gate
+    that was never actually graded."""
     try:
         result = json.loads(raw)
     except json.JSONDecodeError:
@@ -222,3 +222,13 @@ async def score_post(client: httpx.AsyncClient, post_text: str, brief: str,
             scores[pillar] = {"score": 0.0,
                               "reason": "judge did not return a valid score for this pillar"}
     return scores
+
+
+async def score_post(client: httpx.AsyncClient, post_text: str, brief: str,
+                     transcript: list[dict], category: str,
+                     character_personality: str | None,
+                     user_profile: str) -> dict[str, dict]:
+    req = build_judge_request(post_text, brief, transcript, category,
+                              character_personality, user_profile)
+    return parse_judge(await chat(client, req.messages, temperature=req.temperature,
+                                  reasoning=req.reasoning, response_format=req.response_format))

@@ -13,6 +13,7 @@ the worker discards it instead of running it late.
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
 import httpx
@@ -27,6 +28,15 @@ TEXT_TASK_TYPE = "text_generation"
 FAST_POLL_PHASE_SECONDS = 20
 SLOW_POLL_SECONDS = 3
 WORKER_RECHECK_SECONDS = 30
+
+
+@dataclass(frozen=True)
+class LLMRequest:
+    """One provider-neutral LLM call, built by an agent without any I/O."""
+    messages: list[dict]
+    temperature: float
+    reasoning: bool
+    response_format: str = "text"
 
 
 class TextGenerationUnavailable(Exception):

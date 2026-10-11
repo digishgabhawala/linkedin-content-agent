@@ -29,7 +29,7 @@ import re
 import httpx
 
 from ..config import settings
-from ..services.llm_client import chat
+from ..services.llm_client import LLMRequest, chat
 from .content_sources import (
     load_character_personality,
     load_example_for_category,
@@ -194,16 +194,20 @@ honest 400-character post is the correct output here, not a padded 900-character
 built on invented specifics."""
 
 
-async def _call_llm(client: httpx.AsyncClient, system_prompt: str, user_content: str,
-                       think: bool, json_format: bool = False,
-                       temperature: float = 0.7) -> str:
-    # Runs on the local worker via the task-queue (see llm_client.py); think
+def _request(system_prompt: str, user_content: str, think: bool,
+             json_format: bool = False, temperature: float = 0.7) -> LLMRequest:
+    # Runs on the local worker via the task-queue (one task per step); think
     # maps to the provider-neutral "reasoning" flag.
-    return await chat(client, [
+    return LLMRequest([
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": user_content},
     ], temperature=temperature, reasoning=think,
         response_format="json" if json_format else "text")
+
+
+async def _run(client: httpx.AsyncClient, req: LLMRequest) -> str:
+    return await chat(client, req.messages, temperature=req.temperature,
+                      reasoning=req.reasoning, response_format=req.response_format)
 
 
 def _strip_wrapping_quotes(text: str) -> str:
@@ -234,9 +238,8 @@ def _format_transcript(transcript: list[dict]) -> str:
     return "\n".join(lines)
 
 
-async def clarify_turn(client: httpx.AsyncClient, brief: str, transcript: list[dict],
-                       category: str) -> dict:
-    """One clarify turn. Returns {"done": bool, "question": str | None}."""
+def build_clarify_request(brief: str, transcript: list[dict], category: str) -> LLMRequest:
+    """One clarify turn; parse_clarify gives {"done": bool, "question": str | None}."""
     user_content = (f"CATEGORY: {category}\n\n"
                     f"ORIGINAL BRIEF:\n{brief}\n\n"
                     f"CLARIFICATION SO FAR:\n{_format_transcript(transcript)}\n\n"
@@ -249,8 +252,11 @@ async def clarify_turn(client: httpx.AsyncClient, brief: str, transcript: list[d
                     "row, you MUST respond done=true now -- asking again is badgering and "
                     "will not produce material that doesn't exist.\n\n"
                     "Decide: done, or one more question?")
-    raw = await _call_llm(client, CLARIFY_SYSTEM_PROMPT, user_content,
-                             think=False, json_format=True, temperature=0.3)
+    return _request(CLARIFY_SYSTEM_PROMPT, user_content,
+                    think=False, json_format=True, temperature=0.3)
+
+
+def parse_clarify(raw: str) -> dict:
     try:
         result = json.loads(raw)
     except json.JSONDecodeError:
@@ -276,14 +282,16 @@ Keep it short, direct, and specific to the actual reasons given -- not generic. 
 ONLY the message text, no preamble, no "Here's the message:"."""
 
 
-async def build_escalation_message(client: httpx.AsyncClient, brief: str, category: str,
-                                   failing_pillars: list[dict]) -> str:
+def build_escalation_request(brief: str, category: str,
+                             failing_pillars: list[dict]) -> LLMRequest:
     """failing_pillars: [{"pillar": str, "reason": str, "fix_type": "needs_material"|"needs_angle"}, ...]"""
     lines = [f"- {f['pillar']} ({f['fix_type']}): {f['reason']}" for f in failing_pillars]
     user_content = (f"CATEGORY: {category}\n\nORIGINAL BRIEF:\n{brief}\n\n"
                     f"FAILING PILLARS:\n" + "\n".join(lines))
-    raw = await _call_llm(client, _ESCALATION_SYSTEM_PROMPT, user_content,
-                             think=False, temperature=0.4)
+    return _request(_ESCALATION_SYSTEM_PROMPT, user_content, think=False, temperature=0.4)
+
+
+def parse_escalation(raw: str) -> str:
     return _strip_wrapping_quotes(raw)
 
 
@@ -315,22 +323,23 @@ _LENGTH_REMINDER = ("REMINDER on length: this system has been consistently under
                     "meta-commentary about the post after it.")
 
 
-async def generate_draft(client: httpx.AsyncClient, brief: str,
-                         transcript: list[dict], character_id: str | None = None,
-                         category: str | None = None) -> str:
+def build_draft_request(brief: str, transcript: list[dict], character_id: str | None = None,
+                        category: str | None = None) -> LLMRequest:
     """Initial draft from the brief + clarification transcript."""
     system_prompt = build_system_prompt(character_id, category) + "\n\n" + _CALIBRATION_EXAMPLE
     user_content = (f"BRIEF:\n{brief}\n\n"
                     f"CLARIFICATION:\n{_format_transcript(transcript)}\n\n"
                     f"{_FACT_REMINDER}\n\n{_HOOK_REMINDER}\n\n{_LENGTH_REMINDER}\n\nWrite the LinkedIn post.")
-    text = await _call_llm(client, system_prompt, user_content, think=True,
-                              temperature=0.5)
-    return _clean_draft_output(text)
+    return _request(system_prompt, user_content, think=True, temperature=0.5)
 
 
-async def regenerate_draft(client: httpx.AsyncClient, previous_text: str,
-                           instruction: str, character_id: str | None = None,
-                           category: str | None = None) -> str:
+def parse_draft(raw: str) -> str:
+    return _clean_draft_output(raw)
+
+
+def build_rewrite_request(previous_text: str, instruction: str,
+                          character_id: str | None = None,
+                          category: str | None = None) -> LLMRequest:
     """Revise an existing draft per user feedback/instruction (or a judge-pillar
     critique, when called from the recalibration loop)."""
     system_prompt = build_system_prompt(character_id, category) + "\n\n" + _CALIBRATION_EXAMPLE
@@ -338,6 +347,24 @@ async def regenerate_draft(client: httpx.AsyncClient, previous_text: str,
                     f"REVISION INSTRUCTION:\n{instruction}\n\n"
                     f"{_FACT_REMINDER}\n\n{_HOOK_REMINDER}\n\n{_LENGTH_REMINDER}\n\nWrite the revised LinkedIn post, "
                     "applying the instruction while keeping the structure/voice rules.")
-    text = await _call_llm(client, system_prompt, user_content, think=True,
-                              temperature=0.5)
-    return _clean_draft_output(text)
+    return _request(system_prompt, user_content, think=True, temperature=0.5)
+
+
+# Transitional blocking wrappers (removed once the step engine owns all calls).
+async def clarify_turn(client, brief, transcript, category):
+    return parse_clarify(await _run(client, build_clarify_request(brief, transcript, category)))
+
+
+async def build_escalation_message(client, brief, category, failing_pillars):
+    return parse_escalation(await _run(client, build_escalation_request(brief, category,
+                                                                        failing_pillars)))
+
+
+async def generate_draft(client, brief, transcript, character_id=None, category=None):
+    return parse_draft(await _run(client, build_draft_request(brief, transcript, character_id,
+                                                              category)))
+
+
+async def regenerate_draft(client, previous_text, instruction, character_id=None, category=None):
+    return parse_draft(await _run(client, build_rewrite_request(previous_text, instruction,
+                                                                character_id, category)))
