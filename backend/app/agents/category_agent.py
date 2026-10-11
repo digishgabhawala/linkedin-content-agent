@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import httpx
 
-from ..services.llm_client import chat
+from ..services.llm_client import LLMRequest, chat
 from .taxonomy import CATEGORIES
 
 _CATEGORY_LIST = "\n".join(f"- {name}: {desc}" for name, desc in CATEGORIES.items())
@@ -23,12 +23,14 @@ Respond with ONLY this JSON object, nothing else:
 {{"category": "<one of the category names above, exactly as written>"}}"""
 
 
-async def infer_category(client: httpx.AsyncClient, brief: str) -> str:
-    raw = await chat(client, [
+def build_category_request(brief: str) -> LLMRequest:
+    return LLMRequest([
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": f"BRIEF:\n{brief}"},
     ], temperature=0.2, reasoning=False, response_format="json")
 
+
+def parse_category(raw: str) -> str:
     import json
     try:
         result = json.loads(raw)
@@ -37,3 +39,9 @@ async def infer_category(client: httpx.AsyncClient, brief: str) -> str:
         category = ""
 
     return category if category in CATEGORIES else "technical_deep_dive"
+
+
+async def infer_category(client: httpx.AsyncClient, brief: str) -> str:
+    req = build_category_request(brief)
+    return parse_category(await chat(client, req.messages, temperature=req.temperature,
+                                     reasoning=req.reasoning, response_format=req.response_format))

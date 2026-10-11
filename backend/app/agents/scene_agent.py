@@ -45,7 +45,7 @@ import json
 
 import httpx
 
-from ..services.llm_client import chat
+from ..services.llm_client import LLMRequest, chat
 from .content_sources import load_scene_examples
 
 SYSTEM_PROMPT = """You translate a LinkedIn post's content and mood into ONE visual scene \
@@ -185,11 +185,6 @@ __EXAMPLES__
 Respond with ONLY the JSON object -- no preamble, no explanation, no markdown fencing."""
 
 
-async def _call_llm(client: httpx.AsyncClient, system_prompt: str, user_content: str) -> str:
-    return await chat(client, [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": user_content},
-    ], temperature=0.7, reasoning=True, response_format="json")
 
 
 _REQUIRED_KEYS = ("action", "setting_name", "setting_detail", "angle", "mood")
@@ -203,13 +198,19 @@ def _fallback_scene() -> dict:
            "setting_detail": None, "angle": "three-quarter view", "mood": "neutral"}
 
 
-async def derive_scene(client: httpx.AsyncClient, post_text: str) -> dict:
-    """Locked post text -> {"action", "setting_name", "setting_detail",
-    "angle", "mood"}. Does NOT touch the database or decide asset reuse --
-    that's post_service's job (see lock_post), this only ever proposes."""
+def build_scene_request(post_text: str) -> LLMRequest:
+    """Locked post text -> request for {"action", "setting_name",
+    "setting_detail", "angle", "mood"}. Proposes only -- asset reuse is
+    decided by the caller."""
     system_prompt = SYSTEM_PROMPT.replace("__EXAMPLES__", load_scene_examples())
     user_content = f"POST:\n{post_text}\n\nSCENE (JSON):"
-    raw = await _call_llm(client, system_prompt, user_content)
+    return LLMRequest([
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_content},
+    ], temperature=0.7, reasoning=True, response_format="json")
+
+
+def parse_scene(raw: str) -> dict:
     try:
         result = json.loads(raw)
     except json.JSONDecodeError:
@@ -217,3 +218,9 @@ async def derive_scene(client: httpx.AsyncClient, post_text: str) -> dict:
     if not all(k in result for k in _REQUIRED_KEYS):
         return _fallback_scene()
     return result
+
+
+async def derive_scene(client: httpx.AsyncClient, post_text: str) -> dict:
+    req = build_scene_request(post_text)
+    return parse_scene(await chat(client, req.messages, temperature=req.temperature,
+                                  reasoning=req.reasoning, response_format=req.response_format))
