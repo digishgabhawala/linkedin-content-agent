@@ -67,7 +67,7 @@ loop itself isn't tied to any one voice, seniority level, or industry.
    manual (copy the text, download the image) -- this tool doesn't publish
    anything for you.
 8. You can leave feedback at any stage. It's stored, but **not yet fed back**
-   into future drafts -- see Upcoming below for why.
+   into future drafts -- see Implementation TODO below for why.
 
 ## Prerequisites
 
@@ -203,7 +203,7 @@ version:
   testing on the worker side. If a render comes back with a
   solid-black/corrupted image despite `image_ready` status, the underlying
   render failed silently; there is currently **no automatic detection of
-  this** (see Upcoming).
+  this** (see Implementation TODO).
 - **Retrying a failed image, or regenerating a technically-successful one,
   assigns a fresh seed automatically** -- reusing the same seed would just
   replay ComfyUI's cached (possibly corrupted) result instead of rendering
@@ -232,6 +232,8 @@ version:
   Lightning mode when memory is below the recommendation.
 - [x] Carry the selected generation profile explicitly through the task
   payload so the worker executes the user's choice.
+- [x] Add hosted worker registration, one-minute heartbeats, coarse task
+  progress, rolling lease renewal, and a read-only task-queue admin UI.
 
 - **Feedback consumption.** Feedback is captured (stage, note, timestamp)
   but deliberately not yet fed back into prompts or pillar weighting --
@@ -240,9 +242,13 @@ version:
   guessing. Ship capture, observe, design later.
 - **Automatic corrupted-image detection + ComfyUI auto-restart** -- shared
   backlog item with character-forge-v2; see that repo's README for detail.
-- **Managed local renderer lifecycle and real heartbeat.** Replace the
-  temporary process/HTTP health check with worker registration, heartbeats,
-  automatic startup/recovery, and actionable controls in the UI.
+- **Consume hosted worker state in this UI.** The task queue now has worker
+  registration and real heartbeats, but this app's header badge still uses
+  the temporary local process/ComfyUI check. Replace it with hosted registry
+  state and show the assigned worker's coarse progress for the current task.
+- **Automatic local renderer startup/recovery.** Starting and recovering the
+  worker and ComfyUI still requires an external command/process. Worker
+  pause/drain/shutdown controls are intentionally not in the current scope.
 - **Distinct per-character personas beyond one shared personality field.**
   `character_profile` (the mascot's personality) is now a real input to both
   drafting and scoring (`character_consistency` pillar) -- not just scene
