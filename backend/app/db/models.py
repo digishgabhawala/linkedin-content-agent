@@ -50,7 +50,7 @@ class Post(Base):
     final_image_path = Column(String, nullable=True)
     image_job_error = Column(Text, nullable=True)
     # id of the task-queue task tracking this post's in-flight/most-recent
-    # image generation request -- see image_service.py's sync_image_task().
+    # image generation request -- the step engine's `image` step (services/steps.py).
     image_task_id = Column(String, nullable=True)
     # full | lightning, as last requested by the user -- Retry reuses it.
     image_profile = Column(String, nullable=True)
