@@ -279,7 +279,11 @@ def _require_idle(post: Post) -> None:
 
 async def _begin(db: Session, client, post: Post, step: str, ctx: dict) -> Post:
     _require_idle(post)
-    await _start(db, client, post, step, ctx)
+    try:
+        await _start(db, client, post, step, ctx)
+    except llm_client.TaskQueueUnavailable:
+        db.rollback()  # nothing half-applied: the user's input wasn't accepted either
+        raise
     db.commit()
     db.refresh(post)
     return post

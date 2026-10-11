@@ -15,6 +15,7 @@ from ..db.models import Post, PostDraft, SceneAsset
 from ..services import feedback_service as fs
 from ..services import image_service as isvc
 from ..services import post_service as ps
+from ..services import steps
 from ..services.renderer_status_service import (
     hosted_image_readiness,
     hosted_renderer_status,
@@ -106,6 +107,24 @@ def _utc_iso(value: datetime | None) -> str | None:
     return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
+async def _step_action(action):
+    """Run a compute action (submit one step) and map its errors to HTTP."""
+    try:
+        return await action
+    except steps.StepError as e:
+        raise HTTPException(status_code=409 if "busy" in str(e) else 400, detail=str(e))
+    except ps.PostServiceError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+def _active_step_view(post: Post) -> dict | None:
+    active = steps.active_step(post)
+    if active is None:
+        return None
+    return {"name": active["name"], "started_at": active.get("started_at"),
+            "task": getattr(post, "active_task", None)}
+
+
 def _serialize_post(post: Post) -> dict:
     return {
         "id": post.id,
@@ -137,6 +156,10 @@ def _serialize_post(post: Post) -> dict:
         "is_worker_lost": isvc.is_worker_lost(post),
         "image_failure_kind": isvc.image_failure_kind(post),
         "image_profile": post.image_profile,
+        "active_step": _active_step_view(post),
+        "step_error": post.step_error,
+        "can_retry_step": bool(post.step_error and not post.active_step
+                               and "_retry" in json.loads(post.step_context or "{}")),
         "is_queue_delayed": isvc.is_queue_delayed(post),
         "is_stalled": isvc.is_stalled(post),
         "image_started_at": _utc_iso(post.image_started_at),
@@ -204,20 +227,23 @@ async def get_renderer_status(client: httpx.AsyncClient = Depends(get_http_clien
 @router.post("/posts")
 async def create_post(req: CreatePostRequest, db: Session = Depends(get_db),
                       client: httpx.AsyncClient = Depends(get_llm_client)):
-    post = await ps.create_post(db, client, req.brief, character_id=req.character_id)
+    # Compute actions only submit their first step and return at once; status
+    # checks (GET) advance the post step by step -- see services/steps.py.
+    post = await _step_action(steps.start_create(db, client, req.brief, req.character_id))
     return _serialize_post(post)
 
 
 @router.get("/posts")
-def list_posts(db: Session = Depends(get_db)):
-    return [_serialize_post(p) for p in ps.list_posts(db)]
+async def list_posts(db: Session = Depends(get_db),
+                     client: httpx.AsyncClient = Depends(get_http_client)):
+    posts = [await steps.advance(db, client, p) for p in ps.list_posts(db)]
+    return [_serialize_post(p) for p in posts]
 
 
 @router.get("/posts/{post_id}")
 async def get_post(post_id: str, db: Session = Depends(get_db),
                    client: httpx.AsyncClient = Depends(get_http_client)):
-    post = _post_or_404(db, post_id)
-    post = await isvc.sync_image_task(db, client, post)
+    post = await steps.advance(db, client, _post_or_404(db, post_id))
     return _serialize_post(post)
 
 
@@ -225,24 +251,18 @@ async def get_post(post_id: str, db: Session = Depends(get_db),
 async def clarify(post_id: str, req: ClarifyRequest, db: Session = Depends(get_db),
                   client: httpx.AsyncClient = Depends(get_llm_client)):
     _post_or_404(db, post_id)
-    try:
-        post = await ps.submit_clarify_answer(db, client, post_id, req.answer)
-    except ps.PostServiceError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    return _serialize_post(post)
+    return _serialize_post(await _step_action(
+        steps.start_clarify_answer(db, client, post_id, req.answer)))
 
 
 @router.post("/posts/{post_id}/additional-info")
 async def additional_info(post_id: str, req: AdditionalInfoRequest, db: Session = Depends(get_db),
                           client: httpx.AsyncClient = Depends(get_llm_client)):
-    """Human's response to a needs_input escalation (see post_service.py's
-    _draft_and_score) -- unbounded, unlike the automatic recalibration loop."""
+    """Human's response to a needs_input escalation -- unbounded, unlike the
+    automatic recalibration loop."""
     _post_or_404(db, post_id)
-    try:
-        post = await ps.submit_additional_info(db, client, post_id, req.info)
-    except ps.PostServiceError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    return _serialize_post(post)
+    return _serialize_post(await _step_action(
+        steps.start_additional_info(db, client, post_id, req.info)))
 
 
 @router.post("/posts/{post_id}/accept-draft")
@@ -261,22 +281,15 @@ def accept_draft(post_id: str, db: Session = Depends(get_db)):
 async def redraft(post_id: str, db: Session = Depends(get_db),
                   client: httpx.AsyncClient = Depends(get_llm_client)):
     _post_or_404(db, post_id)
-    try:
-        post = await ps.redraft_post(db, client, post_id)
-    except ps.PostServiceError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    return _serialize_post(post)
+    return _serialize_post(await _step_action(steps.start_redraft(db, client, post_id)))
 
 
 @router.post("/posts/{post_id}/regenerate")
 async def regenerate(post_id: str, req: RegenerateRequest, db: Session = Depends(get_db),
                      client: httpx.AsyncClient = Depends(get_llm_client)):
     _post_or_404(db, post_id)
-    try:
-        post = await ps.regenerate_post_draft(db, client, post_id, req.instruction)
-    except ps.PostServiceError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    return _serialize_post(post)
+    return _serialize_post(await _step_action(
+        steps.start_regenerate(db, client, post_id, req.instruction)))
 
 
 @router.get("/posts/{post_id}/drafts")
@@ -302,11 +315,7 @@ def get_feedback(post_id: str, db: Session = Depends(get_db)):
 async def lock(post_id: str, db: Session = Depends(get_db),
                client: httpx.AsyncClient = Depends(get_llm_client)):
     _post_or_404(db, post_id)
-    try:
-        post = await ps.lock_post(db, client, post_id)
-    except ps.PostServiceError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    return _serialize_post(post)
+    return _serialize_post(await _step_action(steps.start_lock(db, client, post_id)))
 
 
 @router.patch("/posts/{post_id}/scene")
@@ -324,12 +333,16 @@ async def generate_image(post_id: str, req: GenerateImageRequest | None = None,
                          db: Session = Depends(get_db),
                          client: httpx.AsyncClient = Depends(get_http_client)):
     _post_or_404(db, post_id)
-    try:
-        post = await isvc.start_image_generation(
-            db, client, post_id, profile=req.profile if req else "full")
-    except isvc.ImageServiceError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    return _serialize_post(post)
+    return _serialize_post(await _step_action(
+        steps.start_image(db, client, post_id, profile=req.profile if req else "full")))
+
+
+@router.post("/posts/{post_id}/retry-step")
+async def retry_step(post_id: str, db: Session = Depends(get_db),
+                     client: httpx.AsyncClient = Depends(get_llm_client)):
+    """Resubmit the step that failed -- the user's call, never automatic."""
+    _post_or_404(db, post_id)
+    return _serialize_post(await _step_action(steps.retry_step(db, client, post_id)))
 
 
 @router.post("/posts/{post_id}/finalize")

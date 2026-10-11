@@ -1,3 +1,10 @@
+import os
+
+# Tests must never touch a real database: backend/.env may point
+# DATABASE_URL at the hosted Supabase project. Force an in-memory SQLite DB
+# before the app's settings/engine are imported (env beats .env).
+os.environ["DATABASE_URL"] = "sqlite:///:memory:"
+
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -5,7 +12,9 @@ from sqlalchemy.orm import sessionmaker
 from app.db import (
     models,  # noqa: F401 -- registers Post/PostDraft/SceneAsset/Feedback on Base
 )
-from app.db.database import Base
+from app.db.database import Base, engine
+
+assert engine.url.get_backend_name() == "sqlite", "tests must not use a real database"
 
 
 @pytest.fixture()
