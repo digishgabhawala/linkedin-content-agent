@@ -43,7 +43,7 @@ export interface Post {
   image_progress_message: string | null
   image_progress_updated_at: string | null
   is_worker_lost: boolean
-  image_failure_kind: 'corrupt_output' | null
+  image_failure_kind: 'corrupt_output' | 'insufficient_memory' | null
   image_started_at: string | null
   created_at: string | null
   updated_at: string | null
@@ -78,10 +78,14 @@ export interface MemoryConsumer {
   memory_gb: number
 }
 
+// Measured and reported by the image worker (which may be another machine).
+// source 'unknown' = no worker memory report yet; enough_memory is then true
+// and the worker itself refuses a Full render that can't fit.
 export interface ImageReadiness {
-  available_bytes: number
-  available_gb: number
-  recommended_gb: number
+  source: 'worker' | 'unknown'
+  worker_name: string | null
+  available_gb: number | null
+  recommended_gb: number | null
   enough_memory: boolean
   top_consumers: MemoryConsumer[]
 }

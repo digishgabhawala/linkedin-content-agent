@@ -16,8 +16,10 @@ from ..services import feedback_service as fs
 from ..services import image_service as isvc
 from ..services import post_service as ps
 from ..services.ollama_lifecycle import owned_ollama_session
-from ..services.renderer_status_service import hosted_renderer_status
-from ..services.resource_service import image_readiness
+from ..services.renderer_status_service import (
+    hosted_image_readiness,
+    hosted_renderer_status,
+)
 
 router = APIRouter(prefix="/api")
 
@@ -188,8 +190,8 @@ def health():
 
 
 @router.get("/resources/image-readiness")
-def get_image_readiness():
-    return image_readiness()
+async def get_image_readiness(client: httpx.AsyncClient = Depends(get_http_client)):
+    return await hosted_image_readiness(client)
 
 
 @router.get("/resources/renderer-status")

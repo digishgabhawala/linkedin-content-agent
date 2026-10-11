@@ -30,11 +30,11 @@ export function ImageMemoryDialog({
             Free some memory, or choose a render mode
           </h2>
           <p className="mt-2 text-sm text-gray-600">
-            Full-quality rendering is fastest with at least{' '}
-            <span className="font-semibold">{readiness.recommended_gb} GB available</span>.
-            This Mac currently has{' '}
-            <span className="font-semibold text-amber-700">{readiness.available_gb} GB</span>.
-            Nothing will be closed automatically.
+            Full-quality rendering needs about{' '}
+            <span className="font-semibold">{readiness.recommended_gb ?? '?'} GB free</span> on the
+            image worker. {readiness.worker_name ?? 'The worker'} currently has{' '}
+            <span className="font-semibold text-amber-700">{readiness.available_gb ?? '?'} GB</span>{' '}
+            (reported about once a minute). Nothing will be closed automatically.
           </p>
         </div>
 
@@ -77,7 +77,7 @@ export function ImageMemoryDialog({
             disabled={loading}
             className="w-full rounded-lg border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm font-medium text-amber-900 hover:bg-amber-100 disabled:opacity-50"
           >
-            Run full quality anyway (may be slow)
+            Try full quality anyway (the worker refuses it if memory is still short)
           </button>
           <button
             onClick={onCancel}

@@ -197,6 +197,7 @@ def is_worker_lost(post: Post) -> bool:
 
 
 CORRUPT_OUTPUT_PREFIX = "corrupt_output:"
+INSUFFICIENT_MEMORY_PREFIX = "insufficient_memory:"
 
 
 def image_failure_kind(post: Post) -> str | None:
@@ -210,6 +211,10 @@ def image_failure_kind(post: Post) -> str | None:
         return None
     if post.image_job_error.startswith(CORRUPT_OUTPUT_PREFIX):
         return "corrupt_output"
+    # The worker refuses a Full render it has no memory for; the user then
+    # chooses Lightning (or frees memory) -- never downgraded automatically.
+    if post.image_job_error.startswith(INSUFFICIENT_MEMORY_PREFIX):
+        return "insufficient_memory"
     return None
 
 

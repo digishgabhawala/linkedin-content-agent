@@ -4,6 +4,7 @@ import type { Post } from '../types'
 interface Props {
   post: Post
   onRetry: () => void
+  onRetryLightning: () => void
 }
 
 function elapsedLabel(startedAt: string | null): string {
@@ -18,6 +19,7 @@ const STAGE_LABELS: Record<string, string> = {
   preparing: 'Preparing',
   rendering: 'Rendering',
   uploading: 'Uploading',
+  starting_comfyui: 'Starting ComfyUI',
 }
 
 // Older workers never report a stage -- a claimed task is still rendering.
@@ -25,7 +27,7 @@ function stageLabel(stage: string | null): string {
   return (stage && STAGE_LABELS[stage]) || 'Rendering'
 }
 
-export function ImageStatus({ post, onRetry }: Props) {
+export function ImageStatus({ post, onRetry, onRetryLightning }: Props) {
   const [, forceTick] = useState(0)
 
   // re-render every 30s so the elapsed-time label stays live while polling
@@ -96,18 +98,36 @@ export function ImageStatus({ post, onRetry }: Props) {
               long time. Retry renders again with a new seed.
             </p>
           </>
+        ) : post.image_failure_kind === 'insufficient_memory' ? (
+          <>
+            <p className="text-sm font-medium text-red-900">Not enough free memory for full quality</p>
+            <p className="text-sm text-red-800">
+              The image worker refused this render rather than risk a blank image. Free some
+              memory and retry, or render in Lightning mode instead.
+            </p>
+          </>
         ) : (
           <p className="text-sm font-medium text-red-900">Image generation failed</p>
         )}
         {post.image_job_error && (
           <pre className="whitespace-pre-wrap text-xs text-red-700">{post.image_job_error}</pre>
         )}
-        <button
-          onClick={onRetry}
-          className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
-        >
-          Retry
-        </button>
+        <div className="flex flex-wrap gap-2">
+          {post.image_failure_kind === 'insufficient_memory' && (
+            <button
+              onClick={onRetryLightning}
+              className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700"
+            >
+              Retry with Lightning
+            </button>
+          )}
+          <button
+            onClick={onRetry}
+            className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
+          >
+            Retry
+          </button>
+        </div>
       </div>
     )
   }

@@ -328,7 +328,11 @@ export default function App() {
           )}
 
           {post && (post.status === 'image_queued' || post.status === 'image_failed') && (
-            <ImageStatus post={post} onRetry={handleGenerateImage} />
+            <ImageStatus
+              post={post}
+              onRetry={handleGenerateImage}
+              onRetryLightning={() => handleMemoryChoice('lightning')}
+            />
           )}
 
           {post && (post.status === 'image_ready' || post.status === 'ready') && (

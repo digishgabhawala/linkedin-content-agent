@@ -56,12 +56,50 @@ def summarize_workers(workers: list[dict]) -> dict:
     }
 
 
-async def hosted_renderer_status(client: httpx.AsyncClient) -> dict:
+def readiness_from_workers(workers: list[dict]) -> dict:
+    """Full-quality memory readiness, as measured BY the image worker.
+
+    The worker may be another machine, so this app's own free memory is
+    irrelevant. With several workers, report the roomiest. Without any
+    worker-reported memory (e.g. a queue that predates heartbeat details),
+    answer "unknown" and don't block: the worker enforces the limit anyway
+    and fails the task with `insufficient_memory:` if Full can't run.
+    """
+    measured = [w for w in workers
+                if _supports_images(w) and w.get("online")
+                and ((w.get("details") or {}).get("memory") or {}).get("available_gb") is not None]
+    if not measured:
+        return {"source": "unknown", "worker_name": None, "available_gb": None,
+                "recommended_gb": None, "enough_memory": True, "top_consumers": []}
+    best = max(measured, key=lambda w: w["details"]["memory"]["available_gb"])
+    mem = best["details"]["memory"]
+    required = (mem.get("required_gb") or {}).get("full", 0.0)
+    return {
+        "source": "worker",
+        "worker_name": best.get("name") or best.get("id"),
+        "available_gb": mem["available_gb"],
+        "recommended_gb": required,
+        "enough_memory": mem["available_gb"] >= required,
+        "top_consumers": mem.get("top_consumers") or [],
+    }
+
+
+async def _fetch_workers(client: httpx.AsyncClient) -> list[dict] | None:
     try:
         resp = await client.get(f"{settings.task_queue_url}/api/workers", timeout=10)
         resp.raise_for_status()
-        workers = resp.json()
+        return resp.json()
     except httpx.HTTPError:
+        return None
+
+
+async def hosted_renderer_status(client: httpx.AsyncClient) -> dict:
+    workers = await _fetch_workers(client)
+    if workers is None:
         return {"reachable": False, "online": False, "online_count": 0, "busy_count": 0,
                 "last_seen_at": None, "message": "Task queue unreachable", "workers": []}
     return summarize_workers(workers)
+
+
+async def hosted_image_readiness(client: httpx.AsyncClient) -> dict:
+    return readiness_from_workers(await _fetch_workers(client) or [])
