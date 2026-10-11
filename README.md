@@ -21,6 +21,18 @@ the post, and deriving the illustration's scene are `text_generation` tasks
 itself; the worker on your laptop runs them (Ollama today) one task at a
 time, so a draft never competes with a render for memory.
 
+**Every request that needs compute is asynchronous: one queue task per
+step.** Creating a post, answering a question, redrafting, locking and
+rendering each submit just their first step and return immediately. The
+app itself is the caller that decides every next step (category -> clarify
+-> draft -> judge -> rewrite/escalation -> ...) when it sees a step finish,
+in `backend/app/services/steps.py`. The UI's status polling is what
+advances a post; a failed step shows **Retry step** (never retried
+automatically). Plain reads/writes (list, open, edit scene, accept draft)
+stay direct. *Known limitation:* a post only advances while someone has it
+open -- close the tab mid-draft and it continues from where it paused the
+next time you open it.
+
 The first version is being built and tested for one specific use case (a
 long-time software engineer building a LinkedIn presence), but that's a
 starting test case, not the intended ceiling -- the brief→draft→illustrate
@@ -141,7 +153,7 @@ nothing is written to a fixed system path.
 
 | Key | Default | What it does |
 |---|---|---|
-| `TEXT_MAX_WAIT_MINUTES` | `60` | How long one LLM call waits for the worker (e.g. behind a render) |
+| `STEP_MAX_WAIT_MINUTES` | `60` | How long a queued step (text or image) may wait for a worker before it expires; then **Retry step** |
 | `DATABASE_URL` | *(unset -> SQLite at `DB_PATH`)* | where the app's data lives -- any SQLAlchemy URL, e.g. the Supabase pooler `postgresql+psycopg://...:6543/postgres` |
 | `DB_SCHEMA` | `linkedin` | Postgres schema for this app's tables (keeps them apart from other apps in the same Supabase project); ignored for SQLite |
 | `DB_PATH` | `posts.db` | SQLite file used only when `DATABASE_URL` is unset |
