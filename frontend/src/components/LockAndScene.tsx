@@ -74,7 +74,7 @@ export function LockAndScene({ post, onUpdateScene, onGenerateImage, onForgetAss
         disabled={loading || dirty}
         className="w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
       >
-        {loading ? 'Starting render…' : 'Generate image (15-20 min)'}
+        {loading ? 'Checking memory…' : 'Generate image'}
       </button>
       {dirty && (
         <p className="text-xs text-amber-600">Save your scene edit before generating.</p>

@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import random
 import shutil
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import httpx
@@ -31,7 +31,8 @@ class ImageServiceError(Exception):
     """Raised for invalid state transitions."""
 
 
-async def start_image_generation(db: Session, client: httpx.AsyncClient, post_id: str) -> Post:
+async def start_image_generation(db: Session, client: httpx.AsyncClient, post_id: str,
+                                 profile: str = "full") -> Post:
     post = db.get(Post, post_id)
     if post is None:
         raise ImageServiceError(f"post {post_id} not found")
@@ -63,7 +64,8 @@ async def start_image_generation(db: Session, client: httpx.AsyncClient, post_id
 
     resp = await client.post(f"{settings.task_queue_url}/api/tasks", json={
         "task_type": "image_generation",
-        "payload": {"character_id": post.character_id, "task": task_text, "seed": post.seed},
+        "payload": {"character_id": post.character_id, "task": task_text,
+                    "seed": post.seed, "profile": profile},
         # Explicit, generous lease -- the task-queue's generic default (60 min)
         # is sized for short tasks, not this one. Found live: a real render on
         # a loaded Mac took ~2 hours; a 60-min lease expired mid-render and let
@@ -82,6 +84,8 @@ async def start_image_generation(db: Session, client: httpx.AsyncClient, post_id
     post.image_job_error = None
     db.commit()
     db.refresh(post)
+    post.image_queue_status = task.get("status", "queued")
+    post.image_claimed_at = task.get("claimed_at")
     return post
 
 
@@ -98,6 +102,8 @@ async def sync_image_task(db: Session, client: httpx.AsyncClient, post: Post) ->
         resp = await client.get(f"{settings.task_queue_url}/api/tasks/{post.image_task_id}", timeout=15)
         resp.raise_for_status()
         task = resp.json()
+        post.image_queue_status = task.get("status")
+        post.image_claimed_at = task.get("claimed_at")
 
         if task["status"] == "done":
             artifact_id = task["result"]["image_artifact_id"]
@@ -127,17 +133,43 @@ async def sync_image_task(db: Session, client: httpx.AsyncClient, post: Post) ->
     return post
 
 
-def is_stalled(post: Post) -> bool:
-    """True once a queued job has run past the configured stall timeout with
-    no result yet. Surfaced via GET /posts/{id} so the frontend can stop
-    polling silently forever and tell the user something's wrong -- there's
-    no watchdog daemon, this is a read-time check only. Independent of the
-    task-queue's own lease/reclaim mechanism (which governs whether a
-    *worker* gets to keep a claimed task) -- this is purely "has it been a
-    suspiciously long time from this app's point of view."""
-    if post.status != "image_queued" or post.image_started_at is None:
+def _elapsed_since(value: datetime | str | None) -> timedelta | None:
+    """Return elapsed UTC time for either a DB datetime or queue ISO timestamp."""
+    if value is None:
+        return None
+    if isinstance(value, str):
+        try:
+            value = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    if value.tzinfo is not None:
+        return datetime.now(timezone.utc) - value.astimezone(timezone.utc)
+    return datetime.utcnow() - value
+
+
+def is_queue_delayed(post: Post) -> bool:
+    """True when a task has waited unusually long without being claimed."""
+    if (post.status != "image_queued"
+            or getattr(post, "image_queue_status", None) != "queued"):
         return False
-    elapsed = datetime.utcnow() - post.image_started_at
+    elapsed = _elapsed_since(post.image_started_at)
+    return elapsed is not None and elapsed > timedelta(
+        minutes=settings.image_stall_timeout_minutes)
+
+
+def is_stalled(post: Post) -> bool:
+    """True when an actively claimed render exceeds the runtime threshold.
+
+    Queue wait time is deliberately excluded: rendering begins at the hosted
+    queue's claimed_at timestamp, not when this app originally submitted the
+    task. The task queue's lease/reclaim mechanism remains independent.
+    """
+    if (post.status != "image_queued"
+            or getattr(post, "image_queue_status", None) != "claimed"):
+        return False
+    elapsed = _elapsed_since(getattr(post, "image_claimed_at", None))
+    if elapsed is None:
+        return False
     return elapsed > timedelta(minutes=settings.image_stall_timeout_minutes)
 
 

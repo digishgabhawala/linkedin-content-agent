@@ -1,4 +1,11 @@
-import type { Post, PostDraft, Feedback, SceneAsset } from './types'
+import type {
+  Post,
+  PostDraft,
+  Feedback,
+  SceneAsset,
+  ImageReadiness,
+  LocalRendererStatus,
+} from './types'
 
 const BASE = '/api'
 
@@ -56,7 +63,15 @@ export const api = {
       body: JSON.stringify({ scene_instruction }),
     }),
 
-  generateImage: (id: string) => req<Post>(`/posts/${id}/generate-image`, { method: 'POST' }),
+  imageReadiness: () => req<ImageReadiness>('/resources/image-readiness'),
+
+  localRendererStatus: () => req<LocalRendererStatus>('/resources/local-renderer-status'),
+
+  generateImage: (id: string, profile: 'full' | 'lightning') =>
+    req<Post>(`/posts/${id}/generate-image`, {
+      method: 'POST',
+      body: JSON.stringify({ profile }),
+    }),
 
   finalize: (id: string) => req<Post>(`/posts/${id}/finalize`, { method: 'POST' }),
 

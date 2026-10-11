@@ -147,7 +147,8 @@ nothing is written to a fixed system path.
 | `CLARIFY_MAX_TURNS` | `5` | hard cap on clarify questions -- a safety valve, not the real quality gate (see "Content quality pipeline" below) |
 | `CHARACTER_FORGE_V2_PATH` | *(auto-resolved absolute path)* | only used for direct filesystem reads now (character personality, local hero.png placeholder) -- only set if your layout differs from the standard sibling-directory tree |
 | `TASK_QUEUE_URL` | `http://127.0.0.1:8000` | where image generation is actually submitted -- point at a real deployment (e.g. Vercel) to use a shared/remote queue |
-| `IMAGE_STALL_TIMEOUT_MINUTES` | `40` | past this with no result, the UI flags the render as possibly stalled (a local, time-based heuristic -- independent of the task-queue's own lease/reclaim mechanism, which governs whether a *worker* keeps its claim) |
+| `COMFYUI_URL` | `http://127.0.0.1:8188` | local ComfyUI endpoint used by the renderer health indicator |
+| `IMAGE_STALL_TIMEOUT_MINUTES` | `40` | flags an unusually long queue wait or render runtime separately; render time starts only when a worker claims the task (independent of the task-queue lease/reclaim mechanism) |
 
 `CHARACTER_FORGE_V2_PATH` resolves automatically to the correct absolute
 sibling path (computed from this file's own location) -- you should not
@@ -194,7 +195,8 @@ version:
 
 ## Known issues / operational notes
 
-- **Image generation is genuinely slow (15-40 min)** and depends entirely on
+- **Full-quality image generation can take roughly 30 minutes on a clean
+  machine or 2+ hours under memory pressure** and depends entirely on
   a worker actually claiming and processing the task -- see `task-queue`'s
   README for the queue/lease mechanics, and character-forge-v2's README for
   the RAM-pressure and stale-ComfyUI-state failure modes found during
@@ -217,16 +219,30 @@ version:
   calibrated against real data yet -- expect to revisit once there's a body
   of real drafts to tune against.
 
-## Upcoming / backlog (not built yet)
+## Implementation TODO
+
+- [x] Show the five-stage content journey, distinguish a queued image from
+  an actively claimed/rendering task, and serialize UTC timestamps with an
+  explicit timezone so browser elapsed times are correct.
+- [x] Show whether the local image worker and ComfyUI are both online.
+- [x] Release the configured Ollama model after app-owned text work, without
+  unloading a model that was already loaded by the user or another process.
+- [x] Before image submission, require a 14 GB readiness scan and show the
+  top three memory consumers; offer rescan, full-quality slow mode, or
+  Lightning mode when memory is below the recommendation.
+- [x] Carry the selected generation profile explicitly through the task
+  payload so the worker executes the user's choice.
 
 - **Feedback consumption.** Feedback is captured (stage, note, timestamp)
   but deliberately not yet fed back into prompts or pillar weighting --
   different post categories likely need different feedback semantics, and
   designing that taxonomy before seeing real feedback data would be
   guessing. Ship capture, observe, design later.
-- **Pre-flight RAM check** and **automatic corrupted-image detection +
-  ComfyUI auto-restart** -- shared backlog items with character-forge-v2,
-  see that repo's README for detail.
+- **Automatic corrupted-image detection + ComfyUI auto-restart** -- shared
+  backlog item with character-forge-v2; see that repo's README for detail.
+- **Managed local renderer lifecycle and real heartbeat.** Replace the
+  temporary process/HTTP health check with worker registration, heartbeats,
+  automatic startup/recovery, and actionable controls in the UI.
 - **Distinct per-character personas beyond one shared personality field.**
   `character_profile` (the mascot's personality) is now a real input to both
   drafting and scoring (`character_consistency` pillar) -- not just scene

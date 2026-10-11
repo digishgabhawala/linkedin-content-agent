@@ -18,7 +18,7 @@ export function PostPreview({ post, onFinalize, onRegenerateImage, onUpdateScene
   function handleRegenerate() {
     if (window.confirm(
       'Regenerate a new image for this post? This replaces the current image ' +
-      '(a fresh 15-30 min render, same scene instruction, new seed) -- the ' +
+      '(same scene instruction, new seed; render time depends on memory and mode) -- the ' +
       'current one will be overwritten once the new render finishes.'
     )) {
       onRegenerateImage()
