@@ -1,7 +1,7 @@
 """judge_agent.py -- scores a drafted post against GATE and OPTIMIZATION
 pillars (see taxonomy.py / CONTENT_QUALITY_DESIGN.md).
 
-Same model (settings.ollama_model) as draft_agent, deliberately -- not a
+Same model as draft_agent (whatever the worker runs), deliberately -- not a
 second model. Reasoning: Ollama calls here are already stateless (fresh
 httpx POST, no shared conversation with the writer call), so the strongest
 self-grading bias -- the judge "remembering" it wrote the draft -- mostly
@@ -24,7 +24,7 @@ import json
 
 import httpx
 
-from ..config import settings
+from ..services.llm_client import chat
 from .content_sources import load_all_examples
 from .taxonomy import GATE_PILLARS, OPTIMIZATION_PILLARS
 
@@ -200,22 +200,12 @@ async def score_post(client: httpx.AsyncClient, post_text: str, brief: str,
     pillar in GATE_PILLARS + OPTIMIZATION_PILLARS. Malformed/missing entries
     fail safe to a score of 0 with a clear reason, rather than silently
     passing a gate that was never actually graded."""
-    payload = {
-        "model": settings.ollama_model,
-        "messages": [
-            {"role": "system", "content": _build_system_prompt()},
-            {"role": "user", "content": _user_content(
-                post_text, brief, transcript, category, character_personality,
-                user_profile)},
-        ],
-        "stream": False,
-        "think": True,
-        "format": "json",
-        "options": {"temperature": 0.15},
-    }
-    resp = await client.post(f"{settings.ollama_url}/api/chat", json=payload, timeout=420)
-    resp.raise_for_status()
-    raw = resp.json().get("message", {}).get("content", "")
+    raw = await chat(client, [
+        {"role": "system", "content": _build_system_prompt()},
+        {"role": "user", "content": _user_content(
+            post_text, brief, transcript, category, character_personality,
+            user_profile)},
+    ], temperature=0.15, reasoning=True, response_format="json")
 
     try:
         result = json.loads(raw)

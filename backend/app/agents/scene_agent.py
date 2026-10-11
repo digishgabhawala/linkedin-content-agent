@@ -45,7 +45,7 @@ import json
 
 import httpx
 
-from ..config import settings
+from ..services.llm_client import chat
 from .content_sources import load_scene_examples
 
 SYSTEM_PROMPT = """You translate a LinkedIn post's content and mood into ONE visual scene \
@@ -185,21 +185,11 @@ __EXAMPLES__
 Respond with ONLY the JSON object -- no preamble, no explanation, no markdown fencing."""
 
 
-async def _call_ollama(client: httpx.AsyncClient, system_prompt: str, user_content: str) -> str:
-    payload = {
-        "model": settings.ollama_model,
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_content},
-        ],
-        "stream": False,
-        "think": True,
-        "format": "json",
-        "options": {"temperature": 0.7},
-    }
-    resp = await client.post(f"{settings.ollama_url}/api/chat", json=payload, timeout=180)
-    resp.raise_for_status()
-    return resp.json().get("message", {}).get("content", "")
+async def _call_llm(client: httpx.AsyncClient, system_prompt: str, user_content: str) -> str:
+    return await chat(client, [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_content},
+    ], temperature=0.7, reasoning=True, response_format="json")
 
 
 _REQUIRED_KEYS = ("action", "setting_name", "setting_detail", "angle", "mood")
@@ -219,7 +209,7 @@ async def derive_scene(client: httpx.AsyncClient, post_text: str) -> dict:
     that's post_service's job (see lock_post), this only ever proposes."""
     system_prompt = SYSTEM_PROMPT.replace("__EXAMPLES__", load_scene_examples())
     user_content = f"POST:\n{post_text}\n\nSCENE (JSON):"
-    raw = await _call_ollama(client, system_prompt, user_content)
+    raw = await _call_llm(client, system_prompt, user_content)
     try:
         result = json.loads(raw)
     except json.JSONDecodeError:

@@ -11,8 +11,6 @@ _WORKSPACE_ROOT = Path(__file__).resolve().parents[3]
 
 
 class Settings(BaseSettings):
-    ollama_url: str = "http://localhost:11434"
-    ollama_model: str = "qwen3:14b"
     db_path: str = "posts.db"
     generated_dir: str = "generated"  # rendered images + placeholder; not source, safe to delete/rebuild
 
@@ -42,11 +40,13 @@ class Settings(BaseSettings):
     # how often to poll for its result.
     text_max_wait_minutes: float = 60
     text_poll_seconds: float = 1
-    comfyui_url: str = "http://127.0.0.1:8188"
     image_stall_timeout_minutes: int = 40
 
     class Config:
         env_file = ".env"
+        # Retired keys (e.g. OLLAMA_URL/OLLAMA_MODEL -- text generation now
+        # runs on the task-queue worker) must not stop the app starting.
+        extra = "ignore"
 
 
 settings = Settings()
