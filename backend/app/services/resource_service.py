@@ -7,10 +7,6 @@ import subprocess
 from collections import defaultdict
 from pathlib import Path
 
-import httpx
-
-from ..config import settings
-
 GIB = 1024 ** 3
 RECOMMENDED_IMAGE_MEMORY_GB = 14.0
 
@@ -116,43 +112,4 @@ def image_readiness() -> dict:
         "recommended_gb": RECOMMENDED_IMAGE_MEMORY_GB,
         "enough_memory": available >= recommended,
         "top_consumers": top_memory_consumers(),
-    }
-
-
-def local_image_worker_running() -> bool:
-    try:
-        output = _run(["ps", "-axo", "command="])
-    except (OSError, subprocess.SubprocessError):
-        return False
-    return any(
-        "workers/image_worker.py" in line or "workers.image_worker" in line
-        for line in output.splitlines()
-    )
-
-
-async def local_renderer_status(client: httpx.AsyncClient) -> dict:
-    worker_running = local_image_worker_running()
-    comfyui_online = False
-    try:
-        response = await client.get(
-            f"{settings.comfyui_url.rstrip('/')}/system_stats", timeout=3)
-        response.raise_for_status()
-        comfyui_online = True
-    except httpx.HTTPError:
-        pass
-
-    if worker_running and comfyui_online:
-        message = "Worker and ComfyUI are ready"
-    elif not worker_running and not comfyui_online:
-        message = "Worker and ComfyUI are stopped"
-    elif not worker_running:
-        message = "ComfyUI is ready, but the worker is stopped"
-    else:
-        message = "Worker is running, but ComfyUI is unavailable"
-
-    return {
-        "online": worker_running and comfyui_online,
-        "worker_running": worker_running,
-        "comfyui_online": comfyui_online,
-        "message": message,
     }
