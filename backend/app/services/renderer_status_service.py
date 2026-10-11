@@ -74,12 +74,16 @@ def readiness_from_workers(workers: list[dict]) -> dict:
     best = max(measured, key=lambda w: w["details"]["memory"]["available_gb"])
     mem = best["details"]["memory"]
     required = (mem.get("required_gb") or {}).get("full", 0.0)
+    comfyui = best["details"].get("comfyui") or {}
+    # An idle ComfyUI the worker started keeps its models loaded, which reads
+    # as "used" memory -- but the worker stops it before refusing a render.
+    reclaimable = comfyui.get("managed") is True and best.get("state") != "busy"
     return {
         "source": "worker",
         "worker_name": best.get("name") or best.get("id"),
         "available_gb": mem["available_gb"],
         "recommended_gb": required,
-        "enough_memory": mem["available_gb"] >= required,
+        "enough_memory": reclaimable or mem["available_gb"] >= required,
         "top_consumers": mem.get("top_consumers") or [],
     }
 
