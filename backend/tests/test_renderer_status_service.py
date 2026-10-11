@@ -103,3 +103,14 @@ def test_readiness_unknown_when_queue_unreachable():
     result = asyncio.run(hosted_image_readiness(FailingClient()))
     assert result["source"] == "unknown"
     assert result["enough_memory"] is True
+
+
+def test_readiness_counts_idle_worker_owned_comfyui_as_reclaimable():
+    details = _mem(6.0) | {"comfyui": {"state": "ready", "managed": True}}
+    result = readiness_from_workers([_worker("mac", details=details)])
+    assert result["enough_memory"] is True  # the worker frees its own ComfyUI first
+
+
+def test_readiness_still_warns_for_user_started_comfyui():
+    details = _mem(6.0) | {"comfyui": {"state": "ready", "managed": False}}
+    assert readiness_from_workers([_worker("mac", details=details)])["enough_memory"] is False
