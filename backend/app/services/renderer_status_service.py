@@ -92,9 +92,12 @@ async def _fetch_workers(client: httpx.AsyncClient) -> list[dict] | None:
     try:
         resp = await client.get(f"{settings.task_queue_url}/api/workers", timeout=10)
         resp.raise_for_status()
-        return resp.json()
-    except httpx.HTTPError:
+        workers = resp.json()
+    except (httpx.HTTPError, ValueError):  # ValueError: body isn't JSON
         return None
+    # Anything but a list (an error object, a proxy page parsed as JSON) is
+    # not a worker registry -- treat it like an unreachable queue.
+    return workers if isinstance(workers, list) else None
 
 
 async def hosted_renderer_status(client: httpx.AsyncClient) -> dict:

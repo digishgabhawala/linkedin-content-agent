@@ -79,6 +79,7 @@ async def start_image_generation(db: Session, client: httpx.AsyncClient, post_id
     task = resp.json()
 
     post.image_task_id = task["id"]
+    post.image_profile = profile
     post.status = "image_queued"
     post.image_started_at = datetime.utcnow()
     post.image_job_error = None

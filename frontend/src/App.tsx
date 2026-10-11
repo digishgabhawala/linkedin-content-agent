@@ -330,7 +330,9 @@ export default function App() {
           {post && (post.status === 'image_queued' || post.status === 'image_failed') && (
             <ImageStatus
               post={post}
-              onRetry={handleGenerateImage}
+              // Retry repeats the profile the user last chose (a failed
+              // Lightning render must not silently come back as Full).
+              onRetry={() => handleMemoryChoice(post.image_profile ?? 'full')}
               onRetryLightning={() => handleMemoryChoice('lightning')}
             />
           )}

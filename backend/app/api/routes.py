@@ -135,6 +135,7 @@ def _serialize_post(post: Post) -> dict:
         "image_progress_updated_at": getattr(post, "image_progress_updated_at", None),
         "is_worker_lost": isvc.is_worker_lost(post),
         "image_failure_kind": isvc.image_failure_kind(post),
+        "image_profile": post.image_profile,
         "is_queue_delayed": isvc.is_queue_delayed(post),
         "is_stalled": isvc.is_stalled(post),
         "image_started_at": _utc_iso(post.image_started_at),

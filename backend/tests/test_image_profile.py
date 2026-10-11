@@ -193,3 +193,24 @@ def test_failure_kind_insufficient_memory():
     post = Post(status="image_failed",
                 image_job_error="insufficient_memory: full quality needs 14 GB free")
     assert image_failure_kind(post) == "insufficient_memory"
+
+
+def test_worker_lost_handles_naive_timestamp():
+    past = (datetime.utcnow() - timedelta(minutes=1)).isoformat()  # no timezone suffix
+    assert is_worker_lost(_claimed(past)) is True
+    future = (datetime.utcnow() + timedelta(minutes=10)).isoformat()
+    assert is_worker_lost(_claimed(future)) is False
+
+
+def test_requested_profile_is_remembered_for_retry(db_session):
+    post = Post(character_id="gtee_dev", brief="brief", status="locked",
+                scene_instruction="turning a dial", seed=42)
+    db_session.add(post)
+    db_session.commit()
+    db_session.refresh(post)
+
+    result = asyncio.run(start_image_generation(db_session, FakeClient(), post.id,
+                                                profile="lightning"))
+
+    db_session.expire_all()
+    assert db_session.get(Post, result.id).image_profile == "lightning"
