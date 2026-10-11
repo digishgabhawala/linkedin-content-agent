@@ -14,11 +14,12 @@ needed here), and a `character-forge-v2` worker running *anywhere* --
 this machine, a friend's laptop, a Colab GPU session -- claims and completes
 it. See `task-queue`'s README for why (mainly: running ComfyUI and Ollama
 in the same process repeatedly caused RAM contention and crashes; this
-lets each heavy workload run wherever it actually has room). Everything
-else -- understanding the brief, writing and grading the post, deriving
-what the illustration should show -- runs against a local Ollama model, no
-cloud dependency, and stays in-process here (not yet worth queueing;
-Ollama isn't the machine's bottleneck the way image generation is).
+lets each heavy workload run wherever it actually has room). **Text
+generation goes the same way:** understanding the brief, writing and grading
+the post, and deriving the illustration's scene are `text_generation` tasks
+(see `backend/app/services/llm_client.py`). This app never calls an LLM
+itself; the worker on your laptop runs them (Ollama today) one task at a
+time, so a draft never competes with a render for memory.
 
 The first version is being built and tested for one specific use case (a
 long-time software engineer building a LinkedIn presence), but that's a
@@ -72,10 +73,11 @@ loop itself isn't tied to any one voice, seniority level, or industry.
 ## Prerequisites
 
 - Python 3.10+, Node 18+
-- [Ollama](https://ollama.com) running locally with `qwen3:14b` pulled:
-  ```bash
-  ollama pull qwen3:14b
-  ```
+- **The local worker running on your laptop** (task-queue's
+  `workers/local_worker.py`) -- it does both text (Ollama with `qwen3:14b`
+  pulled: `ollama pull qwen3:14b`) and images. This backend itself needs no
+  Ollama; with no text-capable worker online, drafting fails fast with
+  "No worker can generate text right now".
 - **A [`task-queue`](../task-queue) instance to submit image work to** --
   either run one locally (see that repo's README) or point `TASK_QUEUE_URL`
   at a shared/deployed one (e.g. a Vercel deployment). This app only
@@ -139,8 +141,7 @@ nothing is written to a fixed system path.
 
 | Key | Default | What it does |
 |---|---|---|
-| `OLLAMA_URL` | `http://localhost:11434` | Ollama server |
-| `OLLAMA_MODEL` | `qwen3:14b` | model used for clarify/draft/regenerate/scene |
+| `TEXT_MAX_WAIT_MINUTES` | `60` | How long one LLM call waits for the worker (e.g. behind a render) |
 | `DB_PATH` | `posts.db` | SQLite file, created at `backend/posts.db` on first run |
 | `GENERATED_DIR` | `generated` | rendered images + placeholder, at `backend/generated/` -- pure output, safe to delete, gets rebuilt |
 | `DEFAULT_CHARACTER_ID` | `gtee_dev` | which character-forge-v2 character to use -- see note below |
@@ -225,8 +226,9 @@ version:
   an actively claimed/rendering task, and serialize UTC timestamps with an
   explicit timezone so browser elapsed times are correct.
 - [x] Show whether the local image worker and ComfyUI are both online.
-- [x] Release the configured Ollama model after app-owned text work, without
-  unloading a model that was already loaded by the user or another process.
+- [x] All LLM calls run as task-queue `text_generation` tasks on the local
+  worker (which owns Ollama and unloads its model when idle or before a
+  render); no direct Ollama access from this app.
 - [x] Before image submission, check the image worker's reported free memory
   (14 GB for full quality) and show its top three memory consumers; offer
   rescan, full quality anyway, or Lightning mode when it is short. The
@@ -275,11 +277,11 @@ version:
 backend/app/
   config.py                    -- Settings (env-driven, see table above)
   db/models.py                  -- Post, PostDraft, Feedback, SceneAsset (SQLAlchemy)
-  agents/category_agent.py      -- infer_category (brief -> category, Ollama)
+  agents/category_agent.py      -- infer_category (brief -> category, via llm_client)
   agents/taxonomy.py            -- categories, gate/optimization pillars, weights, weighted_score
-  agents/draft_agent.py         -- clarify_turn, generate_draft, regenerate_draft (Ollama)
-  agents/judge_agent.py         -- score_post -- grades a draft against every pillar (Ollama)
-  agents/scene_agent.py         -- derive_scene (post text -> terse visual scene, Ollama)
+  agents/draft_agent.py         -- clarify_turn, generate_draft, regenerate_draft (via llm_client)
+  agents/judge_agent.py         -- score_post -- grades a draft against every pillar (via llm_client)
+  agents/scene_agent.py         -- derive_scene (post text -> terse visual scene, via llm_client)
   agents/content_sources.py     -- loads content_config/*.md (profile, skill, examples)
   services/post_service.py      -- Post state machine (clarify, draft+score+recalibrate, lock,
                                     scene assets)
