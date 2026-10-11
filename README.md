@@ -142,13 +142,26 @@ nothing is written to a fixed system path.
 | Key | Default | What it does |
 |---|---|---|
 | `TEXT_MAX_WAIT_MINUTES` | `60` | How long one LLM call waits for the worker (e.g. behind a render) |
-| `DB_PATH` | `posts.db` | SQLite file, created at `backend/posts.db` on first run |
+| `DATABASE_URL` | *(unset -> SQLite at `DB_PATH`)* | where the app's data lives -- any SQLAlchemy URL, e.g. the Supabase pooler `postgresql+psycopg://...:6543/postgres` |
+| `DB_SCHEMA` | `linkedin` | Postgres schema for this app's tables (keeps them apart from other apps in the same Supabase project); ignored for SQLite |
+| `DB_PATH` | `posts.db` | SQLite file used only when `DATABASE_URL` is unset |
 | `GENERATED_DIR` | `generated` | rendered images + placeholder, at `backend/generated/` -- pure output, safe to delete, gets rebuilt |
 | `DEFAULT_CHARACTER_ID` | `gtee_dev` | which character-forge-v2 character to use -- see note below |
 | `CLARIFY_MAX_TURNS` | `5` | hard cap on clarify questions -- a safety valve, not the real quality gate (see "Content quality pipeline" below) |
 | `CHARACTER_FORGE_V2_PATH` | *(auto-resolved absolute path)* | only used for direct filesystem reads now (character personality, local hero.png placeholder) -- only set if your layout differs from the standard sibling-directory tree |
 | `TASK_QUEUE_URL` | `http://127.0.0.1:8000` | where image generation is actually submitted -- point at a real deployment (e.g. Vercel) to use a shared/remote queue |
 | `IMAGE_STALL_TIMEOUT_MINUTES` | `40` | flags an unusually long queue wait or render runtime separately; render time starts only when a worker claims the task (independent of the task-queue lease/reclaim mechanism) |
+
+**Database location is configuration.** Point `DATABASE_URL`/`DB_SCHEMA` at
+a different project or schema and restart; the app creates the schema and
+tables (and adds any newer columns) on startup. To bring existing data
+along, copy it once (refuses to run if the target already has rows):
+
+```bash
+cd backend
+.venv/bin/python scripts/copy_sqlite_to_postgres.py --source sqlite:///posts.db
+# --target defaults to DATABASE_URL, --schema to DB_SCHEMA
+```
 
 `CHARACTER_FORGE_V2_PATH` resolves automatically to the correct absolute
 sibling path (computed from this file's own location) -- you should not
