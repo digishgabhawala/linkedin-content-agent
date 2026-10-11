@@ -9,6 +9,7 @@ from .api.routes import router
 from .config import settings
 from .db.database import init_db
 from .services.llm_client import (
+    TaskQueueUnavailable,
     TextGenerationFailed,
     TextGenerationTimeout,
     TextGenerationUnavailable,
@@ -31,7 +32,7 @@ app.include_router(router)
 # LLM calls run on the user's worker via the task-queue (llm_client.py); turn
 # their failures into clear HTTP errors the UI shows as-is.
 _TEXT_ERRORS = {TextGenerationUnavailable: 503, TextGenerationFailed: 502,
-                TextGenerationTimeout: 504}
+                TextGenerationTimeout: 504, TaskQueueUnavailable: 503}
 
 
 def _text_error_handler(status: int):

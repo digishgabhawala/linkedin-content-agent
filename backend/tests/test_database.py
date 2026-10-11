@@ -6,7 +6,8 @@ from app.db import database
 from app.db.database import build_engine, database_url, init_db
 
 
-def test_database_url_defaults_to_sqlite_db_path():
+def test_database_url_defaults_to_sqlite_db_path(monkeypatch):
+    monkeypatch.delenv("DATABASE_URL", raising=False)  # conftest forces one for safety
     assert database_url(Settings(_env_file=None, db_path="x.db")) == "sqlite:///x.db"
 
 
