@@ -71,6 +71,10 @@ class StepError(PostServiceError):
     """A step action that isn't allowed in the post's current state."""
 
 
+class BusyError(StepError):
+    """The post already has a step in flight."""
+
+
 @dataclass(frozen=True)
 class Next:
     step: str
@@ -250,6 +254,10 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def can_retry(post: Post) -> bool:
+    return bool(post.step_error and not post.active_step and "_retry" in _ctx(post))
+
+
 def active_step(post: Post) -> dict | None:
     return json.loads(post.active_step) if post.active_step else None
 
@@ -273,7 +281,7 @@ async def _start(db: Session, client, post: Post, step: str, ctx: dict) -> None:
 
 def _require_idle(post: Post) -> None:
     if post.active_step:
-        raise StepError(f"post {post.id} is busy with step "
+        raise BusyError(f"post {post.id} is busy with step "
                         f"{active_step(post)['name']!r} -- wait for it to finish")
 
 
@@ -318,14 +326,22 @@ async def advance(db: Session, client, post: Post) -> Post:
         return post
     try:
         task = await llm_client.get_task(client, active["task_id"])
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code != 404:
+            return post  # transient: the next status check tries again
+        # The queue no longer has this task (cleaned up after its retention,
+        # e.g. nobody viewed the post for hours) -- fail it so it can be retried.
+        task = {"status": "failed",
+                "error": "lost: this step's task is no longer in the queue -- retry the step"}
     except httpx.HTTPError:
         return post  # transient: the next status check tries again
     _attach_task_view(post, active["name"], task)
     if task.get("status") not in ("done", "failed"):
         return post
 
-    # Claim this transition: only the request that flips active_step wins;
-    # a second tab polling the same post sees rowcount 0 and does nothing.
+    # Claim this transition: only the request that flips active_step wins (a
+    # second tab polling the same post sees rowcount 0). Commit at once --
+    # never hold the row lock across the network calls below.
     claimed = db.execute(update(Post)
                          .where(Post.id == post.id, Post.active_step == post.active_step)
                          .values(active_step=None)
@@ -333,37 +349,58 @@ async def advance(db: Session, client, post: Post) -> Post:
     if claimed != 1:
         db.rollback()
         db.refresh(post)
+        post.active_task = None
         return post
-    post.active_step = None
+    db.commit()
+    db.refresh(post)
     post.active_task = None  # that task is finished; a next step starts fresh
     step, ctx = active["name"], _ctx(post)
 
     if task["status"] == "failed":
-        error = task.get("error") or "step failed"
         if step == "image":
             post.status = "image_failed"
-            post.image_job_error = error
-        post.step_error = error
-        post.step_context = json.dumps({**ctx, "_retry": step})
-        db.commit()
-        db.refresh(post)
+            post.image_job_error = task.get("error") or "image generation failed"
+        _record_failure(db, post, step, ctx, task.get("error") or "step failed")
         return post
 
-    outcome = await apply(db, client, post, step, task.get("result") or {}, ctx)
+    # Apply the result and commit it, then decide and submit the next step.
+    # Any error is recorded ONCE as a retryable step failure -- never left to
+    # repeat on every poll.
+    try:
+        outcome = await apply(db, client, post, step, task.get("result") or {}, ctx)
+        db.commit()
+    except Exception as e:  # noqa: BLE001 -- surfaced to the user as step_error
+        db.rollback()
+        db.refresh(post)
+        _record_failure(db, post, step, ctx, f"could not apply {step} result: {e}")
+        return post
     decision = decide_next(step, outcome, ctx)
     if isinstance(decision, Next):
         try:
             await _start(db, client, post, decision.step, decision.ctx)
-        except llm_client.TaskQueueUnavailable as e:
-            post.step_error = str(e)
-            post.step_context = json.dumps({**decision.ctx, "_retry": decision.step})
+            db.commit()
+        except Exception as e:  # noqa: BLE001
+            db.rollback()
+            db.refresh(post)
+            _record_failure(db, post, decision.step, decision.ctx,
+                            f"could not start {decision.step}: {e}")
+            return post
     else:
         for name, value in decision.updates.items():
             setattr(post, name, value)
         post.step_context = None
-    db.commit()
+        db.commit()
     db.refresh(post)
     return post
+
+
+def _record_failure(db: Session, post: Post, step: str, ctx: dict, error: str) -> None:
+    """A step failed: keep what's needed to retry it, offer Retry step."""
+    post.active_step = None
+    post.step_error = error
+    post.step_context = json.dumps({**ctx, "_retry": step})
+    db.commit()
+    db.refresh(post)
 
 
 # ------------------------------------------------------------------ actions
@@ -374,7 +411,6 @@ async def start_create(db: Session, client, brief: str, character_id: str | None
     post = Post(character_id=character_id or settings.default_character_id, brief=brief,
                 status="clarifying", clarify_transcript=json.dumps([]))
     db.add(post)
-    db.flush()
     return await _begin(db, client, post, "category", {})
 
 
@@ -454,4 +490,6 @@ async def retry_step(db: Session, client, post_id: str) -> Post:
     step = ctx.pop("_retry", None)
     if not step:
         raise StepError(f"post {post_id} has no failed step to retry")
+    if step == "image":
+        return await start_image(db, client, post_id, ctx.get("profile", "full"))
     return await _begin(db, client, post, step, ctx)

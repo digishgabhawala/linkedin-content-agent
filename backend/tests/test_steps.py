@@ -2,6 +2,7 @@
 import asyncio
 import json
 
+import httpx
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -296,3 +297,163 @@ def test_after_a_hand_off_the_new_step_does_not_show_the_old_tasks_status(db):
     post = _run(steps.advance(db, q, post))
     assert _active(post) == "clarify"
     assert getattr(post, "active_task", None) is None  # not the finished category task
+
+
+# ---------------------------------------------------------------- review fixes
+
+
+class NotFoundQueue(FakeQueue):
+    """The queue purged the task (e.g. 2h text-task retention)."""
+
+    async def get(self, url, timeout):
+        request = httpx.Request("GET", url)
+        raise httpx.HTTPStatusError("404", request=request,
+                                    response=httpx.Response(404, request=request))
+
+
+def test_task_gone_from_queue_becomes_a_retryable_failure_not_busy_forever(db):
+    q = FakeQueue()
+    post = _run(steps.start_create(db, q, LONG_BRIEF, None))
+    gone = NotFoundQueue()
+    gone.tasks = q.tasks
+    post = _run(steps.advance(db, gone, post))
+    assert post.active_step is None and post.step_error.startswith("lost:")
+    post = _run(steps.retry_step(db, q, post.id))
+    assert _active(post) == "category"
+
+
+def test_claim_is_committed_before_any_network_wait(tmp_path):
+    engine = create_engine(f"sqlite:///{tmp_path / 'claim.db'}")
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+    seen = {}
+
+    class Watching(FakeQueue):
+        async def get(self, url, timeout):
+            if "/api/artifacts/" in url:  # a network await inside apply()
+                with Session() as other:
+                    seen["active_step_in_db"] = other.get(Post, pid).active_step
+            return await super().get(url, timeout)
+
+    q = Watching()
+    s = Session()
+    post = Post(character_id="gtee_dev", brief="b", status="locked", post_text="p",
+                scene_instruction="waving", seed=3, clarify_transcript="[]")
+    s.add(post)
+    s.commit()
+    pid = post.id
+    post = _run(steps.start_image(s, q, pid, "lightning"))
+    q.finish(result={"image_artifact_id": "a1"})
+    post = _run(steps.advance(s, q, post))
+    assert seen["active_step_in_db"] is None  # other sessions saw the claim already committed
+    assert post.status == "image_ready"
+    s.close()
+
+
+class BadArtifactQueue(FakeQueue):
+    async def get(self, url, timeout):
+        if "/api/artifacts/" in url:
+            request = httpx.Request("GET", url)
+            raise httpx.HTTPStatusError("500", request=request,
+                                        response=httpx.Response(500, request=request))
+        return await super().get(url, timeout)
+
+
+def test_error_while_applying_a_result_is_recorded_once_not_repeated_every_poll(db):
+    q = BadArtifactQueue()
+    post = Post(character_id="gtee_dev", brief="b", status="locked", post_text="p",
+                scene_instruction="waving", seed=3, clarify_transcript="[]")
+    db.add(post)
+    db.commit()
+    post = _run(steps.start_image(db, q, post.id, "full"))
+    q.finish(result={"image_artifact_id": "a1"})
+    post = _run(steps.advance(db, q, post))
+    assert post.active_step is None and post.step_error and steps.can_retry(post)
+    post = _run(steps.advance(db, q, post))  # next poll: nothing to redo, no exception
+    assert post.active_step is None
+
+
+def test_non_object_json_from_the_model_fails_safe():
+    from app.agents.category_agent import parse_category
+    from app.agents.draft_agent import parse_clarify
+    from app.agents.judge_agent import parse_judge
+    from app.agents.scene_agent import parse_scene
+    assert parse_category("[]") == "technical_deep_dive"
+    assert parse_clarify('"x"') == {"done": True, "question": None}
+    assert all(v["score"] == 0.0 for v in parse_judge("[1, 2]").values())
+    assert parse_scene("[]")["setting_name"] is None
+
+
+def test_clarify_turn_cap_forces_draft(db):
+    q = FakeQueue()
+    turns = [{"question": f"q{i}", "answer": f"a{i}"} for i in range(settings.clarify_max_turns)]
+    post = Post(character_id="gtee_dev", brief=LONG_BRIEF, status="clarifying",
+                category="lessons_learned", clarify_transcript=json.dumps(turns))
+    db.add(post)
+    db.commit()
+    post = _run(steps._begin(db, q, post, "clarify", {}))
+    q.finish('{"done": false, "question": "one more?"}')  # model wants more; cap says no
+    post = _run(steps.advance(db, q, post))
+    assert _active(post) == "draft"
+
+
+def test_automatic_loop_rewrites_with_critique_then_escalates(db):
+    q = FakeQueue()
+    draft = "A grounded post about ownership and the pipeline we fixed. " * 30
+    post = Post(character_id="gtee_dev", brief=LONG_BRIEF, status="clarifying",
+                category="lessons_learned", clarify_transcript="[]", post_text=None)
+    db.add(post)
+    db.commit()
+    post = _run(steps._begin(db, q, post, "draft", {"automatic": True, "attempt": 1}))
+    q.finish(draft)
+    post = _run(steps.advance(db, q, post))                 # -> judge
+    weak_hook = json.loads(_scores_json(9.5))
+    weak_hook["hook"] = {"score": 3.0, "reason": "generic opener"}
+    q.finish(json.dumps(weak_hook))
+    post = _run(steps.advance(db, q, post))                 # -> rewrite (attempt 2)
+    assert _active(post) == "rewrite" and post.recalibration_count == 1
+    assert "hook" in q.latest()["payload"]["messages"][-1]["content"]
+    q.finish(draft)
+    post = _run(steps.advance(db, q, post))                 # -> judge
+    rewrite = db.query(PostDraft).order_by(PostDraft.version.desc()).first()
+    assert rewrite.generated_by == "recalibration" and "hook" in rewrite.user_instruction
+    needs = json.loads(_scores_json(9.5))
+    needs["factual_integrity"] = {"score": 2.0, "reason": "numbers missing"}
+    q.finish(json.dumps(needs))
+    post = _run(steps.advance(db, q, post))                 # -> escalation
+    assert _active(post) == "escalation" and post.recalibration_count == 2
+    q.finish("What was the before/after number?")
+    post = _run(steps.advance(db, q, post))
+    assert post.status == "needs_input"
+    assert post.escalation_reason == "What was the before/after number?"
+
+
+def test_manual_regenerate_rescores_without_changing_status_or_count(db):
+    q = FakeQueue()
+    post = Post(character_id="gtee_dev", brief=LONG_BRIEF, status="drafting", post_text="old",
+                category="lessons_learned", clarify_transcript="[]", recalibration_count=3)
+    db.add(post)
+    db.commit()
+    post = _run(steps.start_regenerate(db, q, post.id, "shorter please"))
+    q.finish("new text " * 200)
+    post = _run(steps.advance(db, q, post))
+    q.finish(_scores_json(1.0))  # terrible scores: still no loop, no escalation
+    post = _run(steps.advance(db, q, post))
+    assert post.active_step is None and post.status == "drafting"
+    assert post.recalibration_count == 3
+
+
+def test_image_retry_and_reroll_get_a_fresh_seed(db, monkeypatch):
+    q = FakeQueue()
+    seeds = iter([111, 222])
+    monkeypatch.setattr(steps.random, "randint", lambda a, b: next(seeds))
+    post = Post(character_id="gtee_dev", brief="b", status="locked", post_text="p",
+                scene_instruction="waving", seed=7, clarify_transcript="[]")
+    db.add(post)
+    db.commit()
+    post = _run(steps.start_image(db, q, post.id, "full"))
+    assert q.latest()["payload"]["seed"] == 7  # first render keeps the locked seed
+    q.finish(error="corrupt_output: near-uniform image")
+    post = _run(steps.advance(db, q, post))
+    post = _run(steps.retry_step(db, q, post.id))  # retry of a failed image
+    assert q.latest()["payload"]["seed"] == 111 and post.status == "image_queued"

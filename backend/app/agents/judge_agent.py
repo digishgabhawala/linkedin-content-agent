@@ -209,6 +209,8 @@ def parse_judge(raw: str) -> dict[str, dict]:
         result = json.loads(raw)
     except json.JSONDecodeError:
         result = {}
+    if not isinstance(result, dict):
+        result = {}
 
     scores = {}
     for pillar in _ALL_PILLARS:
