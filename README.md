@@ -234,6 +234,9 @@ version:
   payload so the worker executes the user's choice.
 - [x] Add hosted worker registration, one-minute heartbeats, coarse task
   progress, rolling lease renewal, and a read-only task-queue admin UI.
+- [x] Blank/uniform renders are detected (character-forge-v2 exit code 3 ->
+  worker `corrupt_output:` failure) and shown as "The image came back blank"
+  with the manual Retry button (fresh seed). No automatic retry.
 - [x] Header badge and image progress read hosted task-queue worker status
   (heartbeats, coarse stage, lost-worker detection) instead of a local
   process check.
@@ -243,8 +246,8 @@ version:
   different post categories likely need different feedback semantics, and
   designing that taxonomy before seeing real feedback data would be
   guessing. Ship capture, observe, design later.
-- **Automatic corrupted-image detection + ComfyUI auto-restart** -- shared
-  backlog item with character-forge-v2; see that repo's README for detail.
+- **ComfyUI auto-restart after a corrupt render** -- planned as part of the
+  image worker's ComfyUI supervision. Detection itself is done (see below).
 - **Worker-status hardening (from the hosted-status review).**
   - Treat a malformed task-queue reply (non-JSON body, or a JSON object
     instead of a worker list) as "Task queue unreachable" instead of a 500

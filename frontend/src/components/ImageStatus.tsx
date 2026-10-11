@@ -88,7 +88,17 @@ export function ImageStatus({ post, onRetry }: Props) {
   if (post.status === 'image_failed') {
     return (
       <div className="rounded-xl border border-red-200 bg-red-50 p-6 shadow-sm space-y-3">
-        <p className="text-sm font-medium text-red-900">Image generation failed</p>
+        {post.image_failure_kind === 'corrupt_output' ? (
+          <>
+            <p className="text-sm font-medium text-red-900">The image came back blank</p>
+            <p className="text-sm text-red-800">
+              This usually happens when the Mac is low on memory or ComfyUI has been running a
+              long time. Retry renders again with a new seed.
+            </p>
+          </>
+        ) : (
+          <p className="text-sm font-medium text-red-900">Image generation failed</p>
+        )}
         {post.image_job_error && (
           <pre className="whitespace-pre-wrap text-xs text-red-700">{post.image_job_error}</pre>
         )}

@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 
 from app.db.models import Post
 from app.services.image_service import (
+    image_failure_kind,
     is_queue_delayed,
     is_stalled,
     is_worker_lost,
@@ -172,3 +173,17 @@ def test_worker_lost_only_applies_to_claimed_tasks():
     post = _claimed((datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat())
     post.image_queue_status = "queued"
     assert is_worker_lost(post) is False
+
+
+def test_failure_kind_corrupt_output():
+    post = Post(status="image_failed",
+                image_job_error="corrupt_output: ComfyUI returned a blank/uniform image")
+    assert image_failure_kind(post) == "corrupt_output"
+
+
+def test_failure_kind_none_for_other_errors():
+    assert image_failure_kind(Post(status="image_failed",
+                                   image_job_error="Command returned exit status 1")) is None
+    assert image_failure_kind(Post(status="image_failed", image_job_error=None)) is None
+    assert image_failure_kind(Post(status="image_ready",
+                                   image_job_error="corrupt_output: stale")) is None
