@@ -1,24 +1,9 @@
-import asyncio
-
-from app.services import resource_service
 from app.services.resource_service import (
     GIB,
     _application_name,
     _linux_available_bytes,
     _mac_available_bytes,
-    local_image_worker_running,
-    local_renderer_status,
 )
-
-
-class HealthyResponse:
-    def raise_for_status(self):
-        pass
-
-
-class HealthyClient:
-    async def get(self, url, timeout):
-        return HealthyResponse()
 
 
 def test_mac_available_memory_includes_reclaimable_pages():
@@ -50,25 +35,3 @@ def test_common_helper_processes_are_aggregated_under_their_app():
 
 def test_gib_constant_is_binary_gigabyte():
     assert GIB == 1_073_741_824
-
-
-def test_local_worker_process_detection(monkeypatch):
-    monkeypatch.setattr(
-        resource_service,
-        "_run",
-        lambda command: "/usr/bin/python workers/image_worker.py\n/usr/bin/python app.py\n",
-    )
-    assert local_image_worker_running() is True
-
-
-def test_renderer_is_online_only_when_worker_and_comfyui_are_ready(monkeypatch):
-    monkeypatch.setattr(resource_service, "local_image_worker_running", lambda: True)
-
-    result = asyncio.run(local_renderer_status(HealthyClient()))
-
-    assert result == {
-        "online": True,
-        "worker_running": True,
-        "comfyui_online": True,
-        "message": "Worker and ComfyUI are ready",
-    }
