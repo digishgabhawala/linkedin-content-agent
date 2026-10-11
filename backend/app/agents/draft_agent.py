@@ -29,6 +29,7 @@ import re
 import httpx
 
 from ..config import settings
+from ..services.llm_client import chat
 from .content_sources import (
     load_character_personality,
     load_example_for_category,
@@ -193,28 +194,16 @@ honest 400-character post is the correct output here, not a padded 900-character
 built on invented specifics."""
 
 
-async def _call_ollama(client: httpx.AsyncClient, system_prompt: str, user_content: str,
+async def _call_llm(client: httpx.AsyncClient, system_prompt: str, user_content: str,
                        think: bool, json_format: bool = False,
                        temperature: float = 0.7) -> str:
-    payload = {
-        "model": settings.ollama_model,
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_content},
-        ],
-        "stream": False,
-        "think": think,
-        "options": {"temperature": temperature},
-    }
-    if json_format:
-        payload["format"] = "json"
-
-    # 420s, not 180 -- think=true calls with the full assembled prompt have been
-    # observed exceeding 180s (found live: a recalibration regenerate_draft call
-    # timed out mid-pipeline, stranding the post in "clarifying").
-    resp = await client.post(f"{settings.ollama_url}/api/chat", json=payload, timeout=420)
-    resp.raise_for_status()
-    return resp.json().get("message", {}).get("content", "")
+    # Runs on the local worker via the task-queue (see llm_client.py); think
+    # maps to the provider-neutral "reasoning" flag.
+    return await chat(client, [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_content},
+    ], temperature=temperature, reasoning=think,
+        response_format="json" if json_format else "text")
 
 
 def _strip_wrapping_quotes(text: str) -> str:
@@ -260,7 +249,7 @@ async def clarify_turn(client: httpx.AsyncClient, brief: str, transcript: list[d
                     "row, you MUST respond done=true now -- asking again is badgering and "
                     "will not produce material that doesn't exist.\n\n"
                     "Decide: done, or one more question?")
-    raw = await _call_ollama(client, CLARIFY_SYSTEM_PROMPT, user_content,
+    raw = await _call_llm(client, CLARIFY_SYSTEM_PROMPT, user_content,
                              think=False, json_format=True, temperature=0.3)
     try:
         result = json.loads(raw)
@@ -293,7 +282,7 @@ async def build_escalation_message(client: httpx.AsyncClient, brief: str, catego
     lines = [f"- {f['pillar']} ({f['fix_type']}): {f['reason']}" for f in failing_pillars]
     user_content = (f"CATEGORY: {category}\n\nORIGINAL BRIEF:\n{brief}\n\n"
                     f"FAILING PILLARS:\n" + "\n".join(lines))
-    raw = await _call_ollama(client, _ESCALATION_SYSTEM_PROMPT, user_content,
+    raw = await _call_llm(client, _ESCALATION_SYSTEM_PROMPT, user_content,
                              think=False, temperature=0.4)
     return _strip_wrapping_quotes(raw)
 
@@ -334,7 +323,7 @@ async def generate_draft(client: httpx.AsyncClient, brief: str,
     user_content = (f"BRIEF:\n{brief}\n\n"
                     f"CLARIFICATION:\n{_format_transcript(transcript)}\n\n"
                     f"{_FACT_REMINDER}\n\n{_HOOK_REMINDER}\n\n{_LENGTH_REMINDER}\n\nWrite the LinkedIn post.")
-    text = await _call_ollama(client, system_prompt, user_content, think=True,
+    text = await _call_llm(client, system_prompt, user_content, think=True,
                               temperature=0.5)
     return _clean_draft_output(text)
 
@@ -349,6 +338,6 @@ async def regenerate_draft(client: httpx.AsyncClient, previous_text: str,
                     f"REVISION INSTRUCTION:\n{instruction}\n\n"
                     f"{_FACT_REMINDER}\n\n{_HOOK_REMINDER}\n\n{_LENGTH_REMINDER}\n\nWrite the revised LinkedIn post, "
                     "applying the instruction while keeping the structure/voice rules.")
-    text = await _call_ollama(client, system_prompt, user_content, think=True,
+    text = await _call_llm(client, system_prompt, user_content, think=True,
                               temperature=0.5)
     return _clean_draft_output(text)

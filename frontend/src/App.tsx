@@ -96,13 +96,13 @@ export default function App() {
   }
 
   async function handleNewBrief(brief: string) {
-    const p = await run(() => api.createPost(brief), undefined, 'Understanding your brief…')
+    const p = await run(() => api.createPost(brief), undefined, 'Understanding your brief… (on your worker — waits if it is rendering)')
     if (p) setPost(p)
   }
 
   async function handleAnswer(answer: string) {
     if (!post) return
-    const p = await run(() => api.clarify(post.id, answer), undefined, 'Processing your answer…')
+    const p = await run(() => api.clarify(post.id, answer), undefined, 'Processing your answer… (on your worker — waits if it is rendering)')
     if (p) setPost(p)
   }
 
@@ -124,7 +124,7 @@ export default function App() {
 
   async function handleRedraft() {
     if (!post) return
-    const p = await run(() => api.redraft(post.id), undefined, 'Generating and scoring a new draft…')
+    const p = await run(() => api.redraft(post.id), undefined, 'Generating and scoring a new draft… (on your worker — waits if it is rendering)')
     if (p) setPost(p)
   }
 
@@ -140,7 +140,7 @@ export default function App() {
 
   async function handleLock() {
     if (!post) return
-    const p = await run(() => api.lock(post.id), undefined, 'Deriving the image scene…')
+    const p = await run(() => api.lock(post.id), undefined, 'Deriving the image scene… (on your worker — waits if it is rendering)')
     if (p) setPost(p)
   }
 

@@ -15,7 +15,6 @@ from ..db.models import Post, PostDraft, SceneAsset
 from ..services import feedback_service as fs
 from ..services import image_service as isvc
 from ..services import post_service as ps
-from ..services.ollama_lifecycle import owned_ollama_session
 from ..services.renderer_status_service import (
     hosted_image_readiness,
     hosted_renderer_status,
@@ -29,8 +28,10 @@ async def get_http_client():
         yield client
 
 
-async def get_ollama_client():
-    async with httpx.AsyncClient() as client, owned_ollama_session(client):
+async def get_llm_client():
+    # Plain HTTP client: LLM calls are task-queue tasks (see llm_client.py);
+    # the local worker owns Ollama and its memory now.
+    async with httpx.AsyncClient() as client:
         yield client
 
 
@@ -202,7 +203,7 @@ async def get_renderer_status(client: httpx.AsyncClient = Depends(get_http_clien
 
 @router.post("/posts")
 async def create_post(req: CreatePostRequest, db: Session = Depends(get_db),
-                      client: httpx.AsyncClient = Depends(get_ollama_client)):
+                      client: httpx.AsyncClient = Depends(get_llm_client)):
     post = await ps.create_post(db, client, req.brief, character_id=req.character_id)
     return _serialize_post(post)
 
@@ -222,7 +223,7 @@ async def get_post(post_id: str, db: Session = Depends(get_db),
 
 @router.post("/posts/{post_id}/clarify")
 async def clarify(post_id: str, req: ClarifyRequest, db: Session = Depends(get_db),
-                  client: httpx.AsyncClient = Depends(get_ollama_client)):
+                  client: httpx.AsyncClient = Depends(get_llm_client)):
     _post_or_404(db, post_id)
     try:
         post = await ps.submit_clarify_answer(db, client, post_id, req.answer)
@@ -233,7 +234,7 @@ async def clarify(post_id: str, req: ClarifyRequest, db: Session = Depends(get_d
 
 @router.post("/posts/{post_id}/additional-info")
 async def additional_info(post_id: str, req: AdditionalInfoRequest, db: Session = Depends(get_db),
-                          client: httpx.AsyncClient = Depends(get_ollama_client)):
+                          client: httpx.AsyncClient = Depends(get_llm_client)):
     """Human's response to a needs_input escalation (see post_service.py's
     _draft_and_score) -- unbounded, unlike the automatic recalibration loop."""
     _post_or_404(db, post_id)
@@ -258,7 +259,7 @@ def accept_draft(post_id: str, db: Session = Depends(get_db)):
 
 @router.post("/posts/{post_id}/draft")
 async def redraft(post_id: str, db: Session = Depends(get_db),
-                  client: httpx.AsyncClient = Depends(get_ollama_client)):
+                  client: httpx.AsyncClient = Depends(get_llm_client)):
     _post_or_404(db, post_id)
     try:
         post = await ps.redraft_post(db, client, post_id)
@@ -269,7 +270,7 @@ async def redraft(post_id: str, db: Session = Depends(get_db),
 
 @router.post("/posts/{post_id}/regenerate")
 async def regenerate(post_id: str, req: RegenerateRequest, db: Session = Depends(get_db),
-                     client: httpx.AsyncClient = Depends(get_ollama_client)):
+                     client: httpx.AsyncClient = Depends(get_llm_client)):
     _post_or_404(db, post_id)
     try:
         post = await ps.regenerate_post_draft(db, client, post_id, req.instruction)
@@ -299,7 +300,7 @@ def get_feedback(post_id: str, db: Session = Depends(get_db)):
 
 @router.post("/posts/{post_id}/lock")
 async def lock(post_id: str, db: Session = Depends(get_db),
-               client: httpx.AsyncClient = Depends(get_ollama_client)):
+               client: httpx.AsyncClient = Depends(get_llm_client)):
     _post_or_404(db, post_id)
     try:
         post = await ps.lock_post(db, client, post_id)

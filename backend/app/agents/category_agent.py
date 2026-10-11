@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import httpx
 
-from ..config import settings
+from ..services.llm_client import chat
 from .taxonomy import CATEGORIES
 
 _CATEGORY_LIST = "\n".join(f"- {name}: {desc}" for name, desc in CATEGORIES.items())
@@ -24,20 +24,10 @@ Respond with ONLY this JSON object, nothing else:
 
 
 async def infer_category(client: httpx.AsyncClient, brief: str) -> str:
-    payload = {
-        "model": settings.ollama_model,
-        "messages": [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": f"BRIEF:\n{brief}"},
-        ],
-        "stream": False,
-        "think": False,
-        "format": "json",
-        "options": {"temperature": 0.2},
-    }
-    resp = await client.post(f"{settings.ollama_url}/api/chat", json=payload, timeout=180)
-    resp.raise_for_status()
-    raw = resp.json().get("message", {}).get("content", "")
+    raw = await chat(client, [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user", "content": f"BRIEF:\n{brief}"},
+    ], temperature=0.2, reasoning=False, response_format="json")
 
     import json
     try:
