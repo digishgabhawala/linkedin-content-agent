@@ -22,7 +22,7 @@ from __future__ import annotations
 import json
 import random
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import httpx
 from sqlalchemy import update
@@ -324,6 +324,17 @@ async def advance(db: Session, client, post: Post) -> Post:
         db.commit()
     if active is None:
         return post
+    if active.get("claimed_at"):
+        # Another request is mid-hand-off for this step: leave it alone, the
+        # post stays busy. A claim that old means that request died -- make
+        # the step retryable instead of busy forever.
+        claimed_at = datetime.fromisoformat(active["claimed_at"])
+        if datetime.now(timezone.utc) - claimed_at < STALE_CLAIM:
+            return post
+        if _claim(db, post, active):
+            _record_failure(db, post, active["name"], _ctx(post),
+                            "interrupted: the step's hand-off did not complete -- retry the step")
+        return post
     try:
         task = await llm_client.get_task(client, active["task_id"])
     except httpx.HTTPStatusError as e:
@@ -339,20 +350,9 @@ async def advance(db: Session, client, post: Post) -> Post:
     if task.get("status") not in ("done", "failed"):
         return post
 
-    # Claim this transition: only the request that flips active_step wins (a
-    # second tab polling the same post sees rowcount 0). Commit at once --
-    # never hold the row lock across the network calls below.
-    claimed = db.execute(update(Post)
-                         .where(Post.id == post.id, Post.active_step == post.active_step)
-                         .values(active_step=None)
-                         .execution_options(synchronize_session=False)).rowcount
-    if claimed != 1:
-        db.rollback()
-        db.refresh(post)
+    if not _claim(db, post, active):
         post.active_task = None
         return post
-    db.commit()
-    db.refresh(post)
     post.active_task = None  # that task is finished; a next step starts fresh
     step, ctx = active["name"], _ctx(post)
 
@@ -388,10 +388,36 @@ async def advance(db: Session, client, post: Post) -> Post:
     else:
         for name, value in decision.updates.items():
             setattr(post, name, value)
+        post.active_step = None  # release the claim: the post now waits for the user
         post.step_context = None
         db.commit()
     db.refresh(post)
     return post
+
+
+STALE_CLAIM = timedelta(minutes=5)
+
+
+def _claim(db: Session, post: Post, active: dict) -> bool:
+    """Compare-and-set the post's active step to a 'claimed' marker.
+
+    Only the request whose UPDATE still sees the original value wins, so two
+    pollers never both hand off. The marker keeps the post busy (plain
+    actions stay refused) while the winner applies the result and submits
+    the next step, and it is committed at once: no row lock is held across
+    those network calls."""
+    marker = json.dumps({**active, "claimed_at": _now_iso()})
+    won = db.execute(update(Post)
+                     .where(Post.id == post.id, Post.active_step == post.active_step)
+                     .values(active_step=marker)
+                     .execution_options(synchronize_session=False)).rowcount == 1
+    if not won:
+        db.rollback()
+        db.refresh(post)
+        return False
+    db.commit()
+    db.refresh(post)
+    return True
 
 
 def _record_failure(db: Session, post: Post, step: str, ctx: dict, error: str) -> None:
