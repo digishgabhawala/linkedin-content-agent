@@ -32,7 +32,7 @@ def parse_category(raw: str) -> str:
     import json
     try:
         result = json.loads(raw)
-        category = result.get("category", "")
+        category = result.get("category", "") if isinstance(result, dict) else ""
     except json.JSONDecodeError:
         category = ""
 

@@ -111,8 +111,10 @@ async def _step_action(action):
     """Run a compute action (submit one step) and map its errors to HTTP."""
     try:
         return await action
+    except steps.BusyError as e:
+        raise HTTPException(status_code=409, detail=str(e))
     except steps.StepError as e:
-        raise HTTPException(status_code=409 if "busy" in str(e) else 400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e))
     except ps.PostServiceError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -158,8 +160,7 @@ def _serialize_post(post: Post) -> dict:
         "image_profile": post.image_profile,
         "active_step": _active_step_view(post),
         "step_error": post.step_error,
-        "can_retry_step": bool(post.step_error and not post.active_step
-                               and "_retry" in json.loads(post.step_context or "{}")),
+        "can_retry_step": steps.can_retry(post),
         "is_queue_delayed": isvc.is_queue_delayed(post),
         "is_stalled": isvc.is_stalled(post),
         "image_started_at": _utc_iso(post.image_started_at),
@@ -187,6 +188,15 @@ def _serialize_feedback(fb) -> dict:
         "post_text_snippet": fb.post_text_snippet,
         "created_at": _utc_iso(fb.created_at),
     }
+
+
+def _idle_post_or_409(db: Session, post_id: str) -> Post:
+    """Plain (non-compute) actions must not change a post mid-step."""
+    post = _post_or_404(db, post_id)
+    if post.active_step:
+        raise HTTPException(status_code=409, detail=f"post {post_id} is busy with a step -- "
+                            "wait for it to finish")
+    return post
 
 
 def _post_or_404(db: Session, post_id: str) -> Post:
@@ -236,7 +246,13 @@ async def create_post(req: CreatePostRequest, db: Session = Depends(get_db),
 @router.get("/posts")
 async def list_posts(db: Session = Depends(get_db),
                      client: httpx.AsyncClient = Depends(get_http_client)):
-    posts = [await steps.advance(db, client, p) for p in ps.list_posts(db)]
+    posts = []
+    for p in ps.list_posts(db):
+        try:
+            p = await steps.advance(db, client, p)
+        except Exception:  # noqa: BLE001 -- one bad post must not hide the list
+            db.rollback()
+        posts.append(p)
     return [_serialize_post(p) for p in posts]
 
 
@@ -269,7 +285,7 @@ async def additional_info(post_id: str, req: AdditionalInfoRequest, db: Session 
 def accept_draft(post_id: str, db: Session = Depends(get_db)):
     """Human's call to proceed with the current best draft despite an
     escalation notice -- the human is always the final gate."""
-    _post_or_404(db, post_id)
+    _idle_post_or_409(db, post_id)
     try:
         post = ps.accept_current_draft(db, post_id)
     except ps.PostServiceError as e:
@@ -320,7 +336,7 @@ async def lock(post_id: str, db: Session = Depends(get_db),
 
 @router.patch("/posts/{post_id}/scene")
 def update_scene(post_id: str, req: SceneUpdateRequest, db: Session = Depends(get_db)):
-    _post_or_404(db, post_id)
+    _idle_post_or_409(db, post_id)
     try:
         post = ps.update_scene(db, post_id, req.scene_instruction)
     except ps.PostServiceError as e:
@@ -347,7 +363,7 @@ async def retry_step(post_id: str, db: Session = Depends(get_db),
 
 @router.post("/posts/{post_id}/finalize")
 def finalize(post_id: str, db: Session = Depends(get_db)):
-    _post_or_404(db, post_id)
+    _idle_post_or_409(db, post_id)
     try:
         post = ps.finalize_post(db, post_id)
     except ps.PostServiceError as e:

@@ -149,6 +149,8 @@ def accept_current_draft(db: Session, post_id: str) -> Post:
         raise PostServiceError(f"post {post_id} is not awaiting a decision "
                                f"(status={post.status})")
     post.status = "drafting"
+    post.step_error = None  # a failed step's Retry no longer applies
+    post.step_context = None
     db.commit()
     db.refresh(post)
     return post

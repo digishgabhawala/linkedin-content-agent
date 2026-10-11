@@ -83,3 +83,39 @@ def test_unreachable_queue_is_503_and_nothing_is_half_applied(api):
     resp = api.post("/api/posts", json={"brief": LONG_BRIEF})
     assert resp.status_code == 503 and "unreachable" in resp.json()["detail"]
     assert api.get("/api/posts").json() == []
+
+
+def test_plain_actions_are_refused_while_a_step_runs(api):
+    post_id = api.post("/api/posts", json={"brief": LONG_BRIEF}).json()["id"]
+    for method, path, body in [("post", "accept-draft", None), ("patch", "scene", {"scene_instruction": "x"}),
+                               ("post", "finalize", None)]:
+        resp = getattr(api, method)(f"/api/posts/{post_id}/{path}", json=body)
+        assert resp.status_code == 409, path
+
+
+def test_every_compute_action_acknowledges_with_its_first_step(api):
+    from app.db.models import Post
+    session = next(app.dependency_overrides[get_db]())
+    drafting = Post(character_id="gtee_dev", brief=LONG_BRIEF, status="drafting", post_text="p",
+                    clarify_transcript="[]", category="lessons_learned")
+    session.add(drafting)
+    session.commit()
+    pid = drafting.id
+    assert api.post(f"/api/posts/{pid}/draft").json()["active_step"]["name"] == "draft"
+    api.queue.finish(error="expired: x")
+    api.get(f"/api/posts/{pid}")
+    assert api.post(f"/api/posts/{pid}/regenerate",
+                    json={"instruction": "tighter"}).json()["active_step"]["name"] == "rewrite"
+
+
+def test_accept_draft_clears_a_stale_retry(api):
+    from app.db.models import Post
+    session = next(app.dependency_overrides[get_db]())
+    post = Post(character_id="gtee_dev", brief="b", status="needs_input", post_text="p",
+                clarify_transcript="[]", step_error="expired: x",
+                step_context='{"automatic": true, "_retry": "judge"}')
+    session.add(post)
+    session.commit()
+    view = api.post(f"/api/posts/{post.id}/accept-draft").json()
+    assert view["status"] == "drafting" and view["step_error"] is None
+    assert view["can_retry_step"] is False

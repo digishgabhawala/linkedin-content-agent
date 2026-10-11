@@ -213,6 +213,6 @@ def parse_scene(raw: str) -> dict:
         result = json.loads(raw)
     except json.JSONDecodeError:
         return _fallback_scene()
-    if not all(k in result for k in _REQUIRED_KEYS):
+    if not isinstance(result, dict) or not all(k in result for k in _REQUIRED_KEYS):
         return _fallback_scene()
     return result

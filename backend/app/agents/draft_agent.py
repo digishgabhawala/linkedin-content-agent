@@ -255,6 +255,8 @@ def parse_clarify(raw: str) -> dict:
     except json.JSONDecodeError:
         # Malformed JSON from the model -- fail safe to "done" rather than looping.
         return {"done": True, "question": None}
+    if not isinstance(result, dict):
+        return {"done": True, "question": None}
     return {"done": bool(result.get("done", True)),
            "question": result.get("question")}
 
