@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from pathlib import Path
+from typing import Literal
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
@@ -13,12 +15,19 @@ from ..db.models import Post, PostDraft, SceneAsset
 from ..services import feedback_service as fs
 from ..services import image_service as isvc
 from ..services import post_service as ps
+from ..services.ollama_lifecycle import owned_ollama_session
+from ..services.resource_service import image_readiness, local_renderer_status
 
 router = APIRouter(prefix="/api")
 
 
 async def get_http_client():
     async with httpx.AsyncClient() as client:
+        yield client
+
+
+async def get_ollama_client():
+    async with httpx.AsyncClient() as client, owned_ollama_session(client):
         yield client
 
 
@@ -57,6 +66,10 @@ class FeedbackRequest(BaseModel):
     post_text_snippet: str | None = None
 
 
+class GenerateImageRequest(BaseModel):
+    profile: Literal["full", "lightning"] = "full"
+
+
 # --------------------------------------------------------------------------
 # serialization
 # --------------------------------------------------------------------------
@@ -74,6 +87,19 @@ def _image_url(post: Post) -> str | None:
         return f"/generated/images/{Path(post.final_image_path).name}"
     placeholder = isvc.ensure_placeholder_image(post.character_id)
     return f"/generated/images/{placeholder.name}" if placeholder else None
+
+
+def _utc_iso(value: datetime | None) -> str | None:
+    """Serialize the database's naive datetimes as the UTC they represent.
+
+    Without an offset, browsers interpret ISO timestamps as local time. On an
+    IST machine that made a just-started render appear 330 minutes old.
+    """
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 def _serialize_post(post: Post) -> dict:
@@ -98,10 +124,13 @@ def _serialize_post(post: Post) -> dict:
         "image_url": _image_url(post),
         "has_final_image": post.final_image_path is not None,
         "image_job_error": post.image_job_error,
+        "image_queue_status": getattr(post, "image_queue_status", None),
+        "image_claimed_at": getattr(post, "image_claimed_at", None),
+        "is_queue_delayed": isvc.is_queue_delayed(post),
         "is_stalled": isvc.is_stalled(post),
-        "image_started_at": post.image_started_at.isoformat() if post.image_started_at else None,
-        "created_at": post.created_at.isoformat() if post.created_at else None,
-        "updated_at": post.updated_at.isoformat() if post.updated_at else None,
+        "image_started_at": _utc_iso(post.image_started_at),
+        "created_at": _utc_iso(post.created_at),
+        "updated_at": _utc_iso(post.updated_at),
     }
 
 
@@ -112,7 +141,7 @@ def _serialize_draft(draft: PostDraft) -> dict:
         "post_text": draft.post_text,
         "generated_by": draft.generated_by,
         "user_instruction": draft.user_instruction,
-        "created_at": draft.created_at.isoformat() if draft.created_at else None,
+        "created_at": _utc_iso(draft.created_at),
     }
 
 
@@ -122,7 +151,7 @@ def _serialize_feedback(fb) -> dict:
         "stage": fb.stage,
         "user_note": fb.user_note,
         "post_text_snippet": fb.post_text_snippet,
-        "created_at": fb.created_at.isoformat() if fb.created_at else None,
+        "created_at": _utc_iso(fb.created_at),
     }
 
 
@@ -137,8 +166,8 @@ def _serialize_scene_asset(asset: SceneAsset) -> dict:
     return {
         "name": asset.name,
         "detail_text": asset.detail_text,
-        "created_at": asset.created_at.isoformat() if asset.created_at else None,
-        "updated_at": asset.updated_at.isoformat() if asset.updated_at else None,
+        "created_at": _utc_iso(asset.created_at),
+        "updated_at": _utc_iso(asset.updated_at),
     }
 
 
@@ -151,9 +180,20 @@ def health():
     return {"status": "ok"}
 
 
+@router.get("/resources/image-readiness")
+def get_image_readiness():
+    return image_readiness()
+
+
+@router.get("/resources/local-renderer-status")
+async def get_local_renderer_status(
+        client: httpx.AsyncClient = Depends(get_http_client)):
+    return await local_renderer_status(client)
+
+
 @router.post("/posts")
 async def create_post(req: CreatePostRequest, db: Session = Depends(get_db),
-                      client: httpx.AsyncClient = Depends(get_http_client)):
+                      client: httpx.AsyncClient = Depends(get_ollama_client)):
     post = await ps.create_post(db, client, req.brief, character_id=req.character_id)
     return _serialize_post(post)
 
@@ -173,7 +213,7 @@ async def get_post(post_id: str, db: Session = Depends(get_db),
 
 @router.post("/posts/{post_id}/clarify")
 async def clarify(post_id: str, req: ClarifyRequest, db: Session = Depends(get_db),
-                  client: httpx.AsyncClient = Depends(get_http_client)):
+                  client: httpx.AsyncClient = Depends(get_ollama_client)):
     _post_or_404(db, post_id)
     try:
         post = await ps.submit_clarify_answer(db, client, post_id, req.answer)
@@ -184,7 +224,7 @@ async def clarify(post_id: str, req: ClarifyRequest, db: Session = Depends(get_d
 
 @router.post("/posts/{post_id}/additional-info")
 async def additional_info(post_id: str, req: AdditionalInfoRequest, db: Session = Depends(get_db),
-                          client: httpx.AsyncClient = Depends(get_http_client)):
+                          client: httpx.AsyncClient = Depends(get_ollama_client)):
     """Human's response to a needs_input escalation (see post_service.py's
     _draft_and_score) -- unbounded, unlike the automatic recalibration loop."""
     _post_or_404(db, post_id)
@@ -209,7 +249,7 @@ def accept_draft(post_id: str, db: Session = Depends(get_db)):
 
 @router.post("/posts/{post_id}/draft")
 async def redraft(post_id: str, db: Session = Depends(get_db),
-                  client: httpx.AsyncClient = Depends(get_http_client)):
+                  client: httpx.AsyncClient = Depends(get_ollama_client)):
     _post_or_404(db, post_id)
     try:
         post = await ps.redraft_post(db, client, post_id)
@@ -220,7 +260,7 @@ async def redraft(post_id: str, db: Session = Depends(get_db),
 
 @router.post("/posts/{post_id}/regenerate")
 async def regenerate(post_id: str, req: RegenerateRequest, db: Session = Depends(get_db),
-                     client: httpx.AsyncClient = Depends(get_http_client)):
+                     client: httpx.AsyncClient = Depends(get_ollama_client)):
     _post_or_404(db, post_id)
     try:
         post = await ps.regenerate_post_draft(db, client, post_id, req.instruction)
@@ -250,7 +290,7 @@ def get_feedback(post_id: str, db: Session = Depends(get_db)):
 
 @router.post("/posts/{post_id}/lock")
 async def lock(post_id: str, db: Session = Depends(get_db),
-               client: httpx.AsyncClient = Depends(get_http_client)):
+               client: httpx.AsyncClient = Depends(get_ollama_client)):
     _post_or_404(db, post_id)
     try:
         post = await ps.lock_post(db, client, post_id)
@@ -270,11 +310,13 @@ def update_scene(post_id: str, req: SceneUpdateRequest, db: Session = Depends(ge
 
 
 @router.post("/posts/{post_id}/generate-image")
-async def generate_image(post_id: str, db: Session = Depends(get_db),
+async def generate_image(post_id: str, req: GenerateImageRequest | None = None,
+                         db: Session = Depends(get_db),
                          client: httpx.AsyncClient = Depends(get_http_client)):
     _post_or_404(db, post_id)
     try:
-        post = await isvc.start_image_generation(db, client, post_id)
+        post = await isvc.start_image_generation(
+            db, client, post_id, profile=req.profile if req else "full")
     except isvc.ImageServiceError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return _serialize_post(post)

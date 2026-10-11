@@ -37,6 +37,7 @@ class Settings(BaseSettings):
     # image generation runs entirely on a separate worker machine.
     character_forge_v2_path: str = str(_WORKSPACE_ROOT / "character-forge-v2")
     task_queue_url: str = "http://127.0.0.1:8000"
+    comfyui_url: str = "http://127.0.0.1:8188"
     image_stall_timeout_minutes: int = 40
 
     class Config:

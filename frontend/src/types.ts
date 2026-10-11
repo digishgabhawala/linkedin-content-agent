@@ -34,6 +34,9 @@ export interface Post {
   image_url: string | null
   has_final_image: boolean
   image_job_error: string | null
+  image_queue_status: 'queued' | 'claimed' | 'done' | 'failed' | null
+  image_claimed_at: string | null
+  is_queue_delayed: boolean
   is_stalled: boolean
   image_started_at: string | null
   created_at: string | null
@@ -62,4 +65,24 @@ export interface Feedback {
   user_note: string
   post_text_snippet: string | null
   created_at: string | null
+}
+
+export interface MemoryConsumer {
+  name: string
+  memory_gb: number
+}
+
+export interface ImageReadiness {
+  available_bytes: number
+  available_gb: number
+  recommended_gb: number
+  enough_memory: boolean
+  top_consumers: MemoryConsumer[]
+}
+
+export interface LocalRendererStatus {
+  online: boolean
+  worker_running: boolean
+  comfyui_online: boolean
+  message: string
 }
