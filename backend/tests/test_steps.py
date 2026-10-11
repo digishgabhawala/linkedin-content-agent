@@ -345,7 +345,8 @@ def test_claim_is_committed_before_any_network_wait(tmp_path):
     post = _run(steps.start_image(s, q, pid, "lightning"))
     q.finish(result={"image_artifact_id": "a1"})
     post = _run(steps.advance(s, q, post))
-    assert seen["active_step_in_db"] is None  # other sessions saw the claim already committed
+    claimed = json.loads(seen["active_step_in_db"])  # committed before the network wait...
+    assert claimed["name"] == "image" and claimed.get("claimed_at")  # ...and still busy
     assert post.status == "image_ready"
     s.close()
 
@@ -457,3 +458,35 @@ def test_image_retry_and_reroll_get_a_fresh_seed(db, monkeypatch):
     post = _run(steps.advance(db, q, post))
     post = _run(steps.retry_step(db, q, post.id))  # retry of a failed image
     assert q.latest()["payload"]["seed"] == 111 and post.status == "image_queued"
+
+
+
+def test_post_stays_busy_while_another_request_is_handing_off(tmp_path):
+    engine = create_engine(f"sqlite:///{tmp_path / 'handoff.db'}")
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+    q = FakeQueue()
+    s = Session()
+    post = _run(steps.start_create(s, q, LONG_BRIEF, None))
+    q.finish('{"category": "lessons_learned"}')
+    # simulate another request that claimed the transition and is mid-hand-off
+    marker = json.dumps({**json.loads(post.active_step), "claimed_at": steps._now_iso()})
+    s.execute(steps.update(Post).where(Post.id == post.id).values(active_step=marker))
+    s.commit()
+    other = Session()
+    view = _run(steps.advance(other, q, other.get(Post, post.id)))
+    assert view.active_step == marker            # still busy, not idle
+    assert len(q.submitted()) == 1               # and it did not submit anything itself
+    s.close()
+    other.close()
+
+
+def test_stale_claim_from_a_crashed_request_becomes_retryable(db):
+    q = FakeQueue()
+    post = _run(steps.start_create(db, q, LONG_BRIEF, None))
+    stale = json.loads(post.active_step) | {"claimed_at": "2020-01-01T00:00:00+00:00"}
+    post.active_step = json.dumps(stale)
+    db.commit()
+    post = _run(steps.advance(db, q, post))
+    assert post.active_step is None and post.step_error.startswith("interrupted:")
+    assert steps.can_retry(post)
