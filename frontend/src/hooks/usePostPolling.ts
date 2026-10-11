@@ -7,24 +7,29 @@ import type { Post } from '../types'
  * if no one has the post open, it pauses between steps (known limitation). */
 export function usePostPolling(initial: Post | null) {
   const [post, setPost] = useState<Post | null>(initial)
-  const intervalRef = useRef<number | null>(null)
+  const timerRef = useRef<number | null>(null)
   const pollId = post && (post.active_step || post.status === 'image_queued') ? post.id : null
 
   useEffect(() => {
     if (pollId === null) return
+    let cancelled = false
+    // Next poll is scheduled only after the previous one finished: a slow
+    // status check (it may advance the post over the network) never piles up.
     async function refresh() {
       try {
-        setPost(await api.getPost(pollId as string))
+        const next = await api.getPost(pollId as string)
+        if (!cancelled) setPost(next)
       } catch {
         // transient network error -- next tick retries
       }
+      if (!cancelled) timerRef.current = window.setTimeout(refresh, 3000)
     }
     void refresh()
-    intervalRef.current = window.setInterval(refresh, 3000)
     return () => {
-      if (intervalRef.current !== null) {
-        clearInterval(intervalRef.current)
-        intervalRef.current = null
+      cancelled = true
+      if (timerRef.current !== null) {
+        clearTimeout(timerRef.current)
+        timerRef.current = null
       }
     }
   }, [pollId])
