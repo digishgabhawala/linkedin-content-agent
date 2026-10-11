@@ -1,6 +1,7 @@
 import asyncio
 from datetime import datetime, timezone
 
+import httpx
 import pytest
 
 from app.services import llm_client
@@ -28,13 +29,21 @@ class Resp:
 
 
 class FakeQueue:
-    def __init__(self, workers, statuses):
+    def __init__(self, workers, statuses, workers_later=None, down=False):
         self.workers, self.statuses = workers, list(statuses)
+        self.workers_later = workers_later  # registry after the first check
+        self.down = down
         self.submitted = None
         self.polls = 0
+        self.worker_checks = 0
 
     async def get(self, url, timeout):
+        if self.down:
+            raise httpx.ConnectError("queue down")
         if url.endswith("/api/workers"):
+            self.worker_checks += 1
+            if self.worker_checks > 1 and self.workers_later is not None:
+                return Resp(self.workers_later)
             return Resp(self.workers)
         self.polls += 1
         return Resp(self.statuses.pop(0) if len(self.statuses) > 1 else self.statuses[0])
@@ -44,10 +53,15 @@ class FakeQueue:
         return Resp({"id": "task-1", "status": "queued"})
 
 
+SLEPT = []
+
+
 @pytest.fixture(autouse=True)
 def _fast(monkeypatch):
+    SLEPT.clear()
+
     async def no_sleep(seconds):
-        pass
+        SLEPT.append(seconds)
 
     monkeypatch.setattr(llm_client.asyncio, "sleep", no_sleep)
 
@@ -88,3 +102,23 @@ def test_gives_up_at_the_deadline(monkeypatch):
     q = FakeQueue([TEXT_WORKER], [{"status": "queued"}])
     with pytest.raises(TextGenerationTimeout):
         asyncio.run(chat(q, MESSAGES, temperature=0.2, reasoning=False))
+
+
+def test_worker_vanishing_while_waiting_fails_fast_instead_of_hanging():
+    q = FakeQueue([TEXT_WORKER], [{"status": "queued"}], workers_later=[OFFLINE_TEXT])
+    with pytest.raises(TextGenerationUnavailable, match="went offline"):
+        asyncio.run(chat(q, MESSAGES, temperature=0.2, reasoning=False))
+    assert q.polls < 100  # gave up long before the 60-minute deadline
+
+
+def test_unreachable_queue_is_reported_as_unavailable():
+    q = FakeQueue([TEXT_WORKER], [{"status": "done"}], down=True)
+    with pytest.raises(TextGenerationUnavailable, match="[Tt]ask queue"):
+        asyncio.run(chat(q, MESSAGES, temperature=0.2, reasoning=False))
+
+
+def test_polling_backs_off_during_a_long_wait():
+    statuses = [{"status": "queued"}] * 60 + [{"status": "done", "result": {"content": "ok"}}]
+    q = FakeQueue([TEXT_WORKER], statuses)
+    assert asyncio.run(chat(q, MESSAGES, temperature=0.2, reasoning=False)) == "ok"
+    assert SLEPT[0] == 1 and max(SLEPT) >= 3  # quick at first, slower later
