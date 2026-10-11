@@ -148,7 +148,6 @@ nothing is written to a fixed system path.
 | `CLARIFY_MAX_TURNS` | `5` | hard cap on clarify questions -- a safety valve, not the real quality gate (see "Content quality pipeline" below) |
 | `CHARACTER_FORGE_V2_PATH` | *(auto-resolved absolute path)* | only used for direct filesystem reads now (character personality, local hero.png placeholder) -- only set if your layout differs from the standard sibling-directory tree |
 | `TASK_QUEUE_URL` | `http://127.0.0.1:8000` | where image generation is actually submitted -- point at a real deployment (e.g. Vercel) to use a shared/remote queue |
-| `COMFYUI_URL` | `http://127.0.0.1:8188` | local ComfyUI endpoint used by the renderer health indicator |
 | `IMAGE_STALL_TIMEOUT_MINUTES` | `40` | flags an unusually long queue wait or render runtime separately; render time starts only when a worker claims the task (independent of the task-queue lease/reclaim mechanism) |
 
 `CHARACTER_FORGE_V2_PATH` resolves automatically to the correct absolute

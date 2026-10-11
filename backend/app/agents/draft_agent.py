@@ -1,8 +1,8 @@
 """draft_agent.py -- brief/clarify -> LinkedIn post text.
 
-Ollama qwen3:14b, direct httpx to /api/chat (no provider abstraction, per this
-workspace's convention -- see ai-mentor/backend/app/services/analyzer_service.py
-for the pattern this mirrors).
+Every LLM call goes through llm_client.chat, i.e. a `text_generation` task
+run by the local worker (qwen3:14b on Ollama today) -- this module never
+talks to a model directly.
 
 Two thinking modes, deliberately different:
 - clarify_turn: think=false. A mechanical classification-plus-question gate,
