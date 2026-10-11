@@ -43,9 +43,7 @@ from __future__ import annotations
 
 import json
 
-import httpx
-
-from ..services.llm_client import LLMRequest, chat
+from ..services.llm_client import LLMRequest
 from .content_sources import load_scene_examples
 
 SYSTEM_PROMPT = """You translate a LinkedIn post's content and mood into ONE visual scene \
@@ -218,9 +216,3 @@ def parse_scene(raw: str) -> dict:
     if not all(k in result for k in _REQUIRED_KEYS):
         return _fallback_scene()
     return result
-
-
-async def derive_scene(client: httpx.AsyncClient, post_text: str) -> dict:
-    req = build_scene_request(post_text)
-    return parse_scene(await chat(client, req.messages, temperature=req.temperature,
-                                  reasoning=req.reasoning, response_format=req.response_format))

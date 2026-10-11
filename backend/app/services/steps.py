@@ -308,6 +308,12 @@ async def advance(db: Session, client, post: Post) -> Post:
     """Called on every status check: move the post forward if its active
     step's task has finished. Safe to call concurrently (compare-and-set)."""
     active = active_step(post)
+    if active is None and post.status == "image_queued" and post.image_task_id:
+        # Image submitted by the pre-step-engine code: adopt it as the active step.
+        active = {"name": "image", "task_id": post.image_task_id, "started_at": None}
+        post.active_step = json.dumps(active)
+        post.step_context = json.dumps({"profile": post.image_profile or "full"})
+        db.commit()
     if active is None:
         return post
     try:
