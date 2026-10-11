@@ -49,6 +49,9 @@ _NEW_POST_COLUMNS = {
     "scene_asset_name": "TEXT",
     "image_task_id": "TEXT",
     "image_profile": "TEXT",
+    "active_step": "TEXT",
+    "step_context": "TEXT",
+    "step_error": "TEXT",
 }
 
 

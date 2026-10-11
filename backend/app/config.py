@@ -46,6 +46,9 @@ class Settings(BaseSettings):
     # how long one LLM call may wait for a worker (e.g. behind a render), and
     # how often to poll for its result.
     text_max_wait_minutes: float = 60
+    # Max minutes a queued step (LLM or image) may wait for a worker before
+    # the worker discards it as expired; the user can then retry the step.
+    step_max_wait_minutes: float = 60
     text_poll_seconds: float = 1
     image_stall_timeout_minutes: int = 40
 
