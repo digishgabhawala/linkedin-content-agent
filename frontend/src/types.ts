@@ -38,6 +38,11 @@ export interface Post {
   image_claimed_at: string | null
   is_queue_delayed: boolean
   is_stalled: boolean
+  image_worker_id: string | null
+  image_progress_stage: string | null
+  image_progress_message: string | null
+  image_progress_updated_at: string | null
+  is_worker_lost: boolean
   image_started_at: string | null
   created_at: string | null
   updated_at: string | null
@@ -80,9 +85,27 @@ export interface ImageReadiness {
   top_consumers: MemoryConsumer[]
 }
 
-export interface LocalRendererStatus {
+export interface WorkerDetails {
+  memory?: { available_gb?: number; required_gb?: Record<string, number> }
+  comfyui?: { state?: string; managed?: boolean }
+  [key: string]: unknown
+}
+
+export interface RendererWorker {
+  id: string
+  name: string
+  state: 'idle' | 'busy' | string
+  current_task_id: string | null
+  last_heartbeat_at: string | null
+  details: WorkerDetails
+}
+
+export interface RendererStatus {
+  reachable: boolean
   online: boolean
-  worker_running: boolean
-  comfyui_online: boolean
+  online_count: number
+  busy_count: number
+  last_seen_at: string | null
   message: string
+  workers: RendererWorker[]
 }
