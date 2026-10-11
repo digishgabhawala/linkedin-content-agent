@@ -227,9 +227,12 @@ version:
 - [x] Show whether the local image worker and ComfyUI are both online.
 - [x] Release the configured Ollama model after app-owned text work, without
   unloading a model that was already loaded by the user or another process.
-- [x] Before image submission, require a 14 GB readiness scan and show the
-  top three memory consumers; offer rescan, full-quality slow mode, or
-  Lightning mode when memory is below the recommendation.
+- [x] Before image submission, check the image worker's reported free memory
+  (14 GB for full quality) and show its top three memory consumers; offer
+  rescan, full quality anyway, or Lightning mode when it is short. The
+  worker measures its own machine and enforces the limit: a Full render it
+  can't fit fails with `insufficient_memory:`, shown with a **Retry with
+  Lightning** button. It never switches profile on its own.
 - [x] Carry the selected generation profile explicitly through the task
   payload so the worker executes the user's choice.
 - [x] Add hosted worker registration, one-minute heartbeats, coarse task
@@ -246,8 +249,6 @@ version:
   different post categories likely need different feedback semantics, and
   designing that taxonomy before seeing real feedback data would be
   guessing. Ship capture, observe, design later.
-- **ComfyUI auto-restart after a corrupt render** -- planned as part of the
-  image worker's ComfyUI supervision. Detection itself is done (see below).
 - **Worker-status hardening (from the hosted-status review).**
   - Treat a malformed task-queue reply (non-JSON body, or a JSON object
     instead of a worker list) as "Task queue unreachable" instead of a 500
@@ -256,9 +257,9 @@ version:
     lease timestamp without a timezone in `is_worker_lost`.
   - Guard the UI's relative-time labels against unparseable dates (currently
     can render "NaN h ago").
-- **Automatic local renderer startup/recovery.** Starting and recovering the
-  worker and ComfyUI still requires an external command/process. Worker
-  pause/drain/shutdown controls are intentionally not in the current scope.
+- **Worker controls.** You start the image worker by hand; it now starts,
+  idle-stops and restarts ComfyUI itself (see task-queue README). Worker
+  pause/drain/shutdown controls from this UI are intentionally not in scope.
 - **Distinct per-character personas beyond one shared personality field.**
   `character_profile` (the mascot's personality) is now a real input to both
   drafting and scoring (`character_consistency` pillar) -- not just scene

@@ -187,3 +187,9 @@ def test_failure_kind_none_for_other_errors():
     assert image_failure_kind(Post(status="image_failed", image_job_error=None)) is None
     assert image_failure_kind(Post(status="image_ready",
                                    image_job_error="corrupt_output: stale")) is None
+
+
+def test_failure_kind_insufficient_memory():
+    post = Post(status="image_failed",
+                image_job_error="insufficient_memory: full quality needs 14 GB free")
+    assert image_failure_kind(post) == "insufficient_memory"
