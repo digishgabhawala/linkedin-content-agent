@@ -4,7 +4,7 @@ import type {
   Feedback,
   SceneAsset,
   ImageReadiness,
-  LocalRendererStatus,
+  RendererStatus,
 } from './types'
 
 const BASE = '/api'
@@ -65,7 +65,7 @@ export const api = {
 
   imageReadiness: () => req<ImageReadiness>('/resources/image-readiness'),
 
-  localRendererStatus: () => req<LocalRendererStatus>('/resources/local-renderer-status'),
+  rendererStatus: () => req<RendererStatus>('/resources/renderer-status'),
 
   generateImage: (id: string, profile: 'full' | 'lightning') =>
     req<Post>(`/posts/${id}/generate-image`, {

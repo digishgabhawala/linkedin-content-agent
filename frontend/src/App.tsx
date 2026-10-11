@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api } from './api'
 import { usePostPolling } from './hooks/usePostPolling'
-import type { ImageReadiness, LocalRendererStatus, Post } from './types'
+import type { ImageReadiness, Post, RendererStatus } from './types'
 import { BriefForm } from './components/BriefForm'
 import { ClarifyChat } from './components/ClarifyChat'
 import { DraftPanel } from './components/DraftPanel'
@@ -27,7 +27,7 @@ export default function App() {
   const [imageReadiness, setImageReadiness] = useState<ImageReadiness | null>(null)
   const [showMemoryDialog, setShowMemoryDialog] = useState(false)
   const [journeyActivity, setJourneyActivity] = useState<string | null>(null)
-  const [rendererStatus, setRendererStatus] = useState<LocalRendererStatus | null>(null)
+  const [rendererStatus, setRendererStatus] = useState<RendererStatus | null>(null)
 
   useEffect(() => {
     refreshHistory()
@@ -37,21 +37,25 @@ export default function App() {
     let active = true
     async function refreshRendererStatus() {
       try {
-        const status = await api.localRendererStatus()
+        const status = await api.rendererStatus()
         if (active) setRendererStatus(status)
       } catch {
         if (active) {
           setRendererStatus({
+            reachable: false,
             online: false,
-            worker_running: false,
-            comfyui_online: false,
-            message: 'Could not check the local renderer',
+            online_count: 0,
+            busy_count: 0,
+            last_seen_at: null,
+            message: 'Could not reach this app’s backend',
+            workers: [],
           })
         }
       }
     }
     void refreshRendererStatus()
-    const interval = window.setInterval(refreshRendererStatus, 5000)
+    // Heartbeats arrive every 60s, so polling faster than ~15s shows nothing new.
+    const interval = window.setInterval(refreshRendererStatus, 15000)
     return () => {
       active = false
       clearInterval(interval)
