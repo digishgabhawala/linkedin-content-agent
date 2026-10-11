@@ -43,6 +43,10 @@ export interface Post {
   image_progress_message: string | null
   image_progress_updated_at: string | null
   is_worker_lost: boolean
+  // Phase 3a: the one queue task this post is waiting on (null = idle).
+  active_step: ActiveStep | null
+  step_error: string | null
+  can_retry_step: boolean
   image_failure_kind: 'corrupt_output' | 'insufficient_memory' | null
   image_profile: 'full' | 'lightning' | null
   image_started_at: string | null
@@ -114,4 +118,15 @@ export interface RendererStatus {
   last_seen_at: string | null
   message: string
   workers: RendererWorker[]
+}
+
+export interface ActiveStep {
+  name: 'category' | 'clarify' | 'draft' | 'rewrite' | 'judge' | 'escalation' | 'scene' | 'image'
+  started_at: string | null
+  task: {
+    status: 'queued' | 'claimed' | 'done' | 'failed' | string
+    claimed_by: string | null
+    progress_stage: string | null
+    progress_message: string | null
+  } | null
 }

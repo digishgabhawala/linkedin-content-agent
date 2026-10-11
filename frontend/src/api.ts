@@ -74,6 +74,7 @@ export const api = {
     }),
 
   finalize: (id: string) => req<Post>(`/posts/${id}/finalize`, { method: 'POST' }),
+  retryStep: (id: string) => req<Post>(`/posts/${id}/retry-step`, { method: 'POST' }),
 
   listSceneAssets: () => req<SceneAsset[]>('/scene-assets'),
 

@@ -18,6 +18,7 @@ import { SceneAssetsPanel } from './components/SceneAssetsPanel'
 import { ImageMemoryDialog } from './components/ImageMemoryDialog'
 import { JourneyProgress } from './components/JourneyProgress'
 import { RendererStatusBadge } from './components/RendererStatusBadge'
+import { StepStatus } from './components/StepStatus'
 
 export default function App() {
   const { post, setPost } = usePostPolling(null)
@@ -95,14 +96,23 @@ export default function App() {
     }
   }
 
+  // A request in flight OR a queue step still running: actions stay disabled.
+  const working = busy || !!post?.active_step
+
+  async function handleRetryStep() {
+    if (!post) return
+    const p = await run(() => api.retryStep(post.id), undefined, 'Submitting…')
+    if (p) setPost(p)
+  }
+
   async function handleNewBrief(brief: string) {
-    const p = await run(() => api.createPost(brief), undefined, 'Understanding your brief… (on your worker — waits if it is rendering)')
+    const p = await run(() => api.createPost(brief), undefined, 'Submitting…')
     if (p) setPost(p)
   }
 
   async function handleAnswer(answer: string) {
     if (!post) return
-    const p = await run(() => api.clarify(post.id, answer), undefined, 'Processing your answer… (on your worker — waits if it is rendering)')
+    const p = await run(() => api.clarify(post.id, answer), undefined, 'Submitting…')
     if (p) setPost(p)
   }
 
@@ -111,7 +121,7 @@ export default function App() {
     const p = await run(
       () => api.submitAdditionalInfo(post.id, info),
       undefined,
-      'Rewriting and scoring the draft…',
+      'Submitting…',
     )
     if (p) setPost(p)
   }
@@ -124,7 +134,7 @@ export default function App() {
 
   async function handleRedraft() {
     if (!post) return
-    const p = await run(() => api.redraft(post.id), undefined, 'Generating and scoring a new draft… (on your worker — waits if it is rendering)')
+    const p = await run(() => api.redraft(post.id), undefined, 'Submitting…')
     if (p) setPost(p)
   }
 
@@ -133,14 +143,14 @@ export default function App() {
     const p = await run(
       () => api.regenerate(post.id, instruction),
       undefined,
-      'Revising and scoring the draft…',
+      'Submitting…',
     )
     if (p) setPost(p)
   }
 
   async function handleLock() {
     if (!post) return
-    const p = await run(() => api.lock(post.id), undefined, 'Deriving the image scene… (on your worker — waits if it is rendering)')
+    const p = await run(() => api.lock(post.id), undefined, 'Submitting…')
     if (p) setPost(p)
   }
 
@@ -246,7 +256,7 @@ export default function App() {
       {showMemoryDialog && imageReadiness && (
         <ImageMemoryDialog
           readiness={imageReadiness}
-          loading={busy}
+          loading={working}
           onRescan={handleMemoryRescan}
           onFullQuality={() => handleMemoryChoice('full')}
           onLightning={() => handleMemoryChoice('lightning')}
@@ -281,14 +291,16 @@ export default function App() {
         <main className="flex-1 space-y-6">
           {post && <JourneyProgress post={post} activity={journeyActivity} />}
 
+          {post && <StepStatus post={post} onRetry={handleRetryStep} loading={working} />}
+
           {!post && (
             <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-              <BriefForm onSubmit={handleNewBrief} loading={busy} />
+              <BriefForm onSubmit={handleNewBrief} loading={working} />
             </div>
           )}
 
           {post && post.status === 'clarifying' && (
-            <ClarifyChat post={post} onAnswer={handleAnswer} loading={busy} />
+            <ClarifyChat post={post} onAnswer={handleAnswer} loading={working} />
           )}
 
           {post && post.status === 'needs_input' && (
@@ -296,7 +308,7 @@ export default function App() {
               post={post}
               onSubmitInfo={handleSubmitAdditionalInfo}
               onAcceptDraft={handleAcceptDraft}
-              loading={busy}
+              loading={working}
             />
           )}
 
@@ -307,7 +319,7 @@ export default function App() {
                 onRedraft={handleRedraft}
                 onRegenerate={handleRegenerate}
                 onLock={handleLock}
-                loading={busy}
+                loading={working}
               />
               <FeedbackForm onSubmit={handleFeedback} />
             </>
@@ -320,7 +332,7 @@ export default function App() {
                 onUpdateScene={handleUpdateScene}
                 onGenerateImage={handleGenerateImage}
                 onForgetAsset={handleForgetAsset}
-                loading={busy}
+                loading={working}
                 error={imageError}
               />
               <FeedbackForm onSubmit={handleFeedback} />
@@ -345,7 +357,7 @@ export default function App() {
                 onRegenerateImage={handleGenerateImage}
                 onUpdateScene={handleUpdateScene}
                 onForgetAsset={handleForgetAsset}
-                loading={busy}
+                loading={working}
               />
               <FeedbackForm onSubmit={handleFeedback} />
             </>

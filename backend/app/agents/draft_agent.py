@@ -1,6 +1,6 @@
 """draft_agent.py -- brief/clarify -> LinkedIn post text.
 
-Every LLM call goes through llm_client.chat, i.e. a `text_generation` task
+Every LLM call is one `text_generation` queue step (see services/steps.py), i.e. a task
 run by the local worker (qwen3:14b on Ollama today) -- this module never
 talks to a model directly.
 
