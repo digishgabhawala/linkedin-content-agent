@@ -43,6 +43,7 @@ export interface Post {
   image_progress_message: string | null
   image_progress_updated_at: string | null
   is_worker_lost: boolean
+  image_failure_kind: 'corrupt_output' | null
   image_started_at: string | null
   created_at: string | null
   updated_at: string | null

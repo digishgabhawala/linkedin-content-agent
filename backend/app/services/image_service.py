@@ -196,6 +196,23 @@ def is_worker_lost(post: Post) -> bool:
     return past_lease is not None and past_lease > timedelta(0)
 
 
+CORRUPT_OUTPUT_PREFIX = "corrupt_output:"
+
+
+def image_failure_kind(post: Post) -> str | None:
+    """Classify a failed render so the UI can explain it.
+
+    The task-queue image worker prefixes blank/uniform renders (forge2 exit
+    code 3) with "corrupt_output:". Retry stays manual and already uses a
+    fresh seed -- this only changes the message the user sees.
+    """
+    if post.status != "image_failed" or not post.image_job_error:
+        return None
+    if post.image_job_error.startswith(CORRUPT_OUTPUT_PREFIX):
+        return "corrupt_output"
+    return None
+
+
 def ensure_placeholder_image(character_id: str) -> Path | None:
     """Copy hero.png into our own generated/images/ on first use so it's
     servable under the same /generated static mount as real renders. Direct
