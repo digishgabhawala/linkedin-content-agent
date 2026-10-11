@@ -245,6 +245,14 @@ version:
   guessing. Ship capture, observe, design later.
 - **Automatic corrupted-image detection + ComfyUI auto-restart** -- shared
   backlog item with character-forge-v2; see that repo's README for detail.
+- **Worker-status hardening (from the hosted-status review).**
+  - Treat a malformed task-queue reply (non-JSON body, or a JSON object
+    instead of a worker list) as "Task queue unreachable" instead of a 500
+    from `/api/resources/renderer-status`.
+  - Add tests for the success path of `hosted_renderer_status` and for a
+    lease timestamp without a timezone in `is_worker_lost`.
+  - Guard the UI's relative-time labels against unparseable dates (currently
+    can render "NaN h ago").
 - **Automatic local renderer startup/recovery.** Starting and recovering the
   worker and ComfyUI still requires an external command/process. Worker
   pause/drain/shutdown controls are intentionally not in the current scope.
