@@ -76,8 +76,9 @@ export function ImageStatus({ post, onRetry }: Props) {
         )}
         {rendering && !post.is_worker_lost && post.is_stalled && (
           <p className="rounded-lg bg-amber-50 border border-amber-100 p-2 text-xs text-amber-800">
-            Rendering is taking longer than usual. The worker is still reporting in, so it is
-            probably just slow — full-quality renders can take over an hour on a busy Mac.
+            {post.image_progress_updated_at
+              ? 'Rendering is taking longer than usual. The worker is still reporting in, so it is probably just slow — full-quality renders can take over an hour on a busy Mac.'
+              : "Rendering is taking longer than usual. This worker doesn't report progress, so we can't confirm it is still running — check it directly."}
           </p>
         )}
       </div>

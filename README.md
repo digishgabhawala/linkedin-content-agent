@@ -234,6 +234,9 @@ version:
   payload so the worker executes the user's choice.
 - [x] Add hosted worker registration, one-minute heartbeats, coarse task
   progress, rolling lease renewal, and a read-only task-queue admin UI.
+- [x] Header badge and image progress read hosted task-queue worker status
+  (heartbeats, coarse stage, lost-worker detection) instead of a local
+  process check.
 
 - **Feedback consumption.** Feedback is captured (stage, note, timestamp)
   but deliberately not yet fed back into prompts or pillar weighting --
@@ -242,10 +245,6 @@ version:
   guessing. Ship capture, observe, design later.
 - **Automatic corrupted-image detection + ComfyUI auto-restart** -- shared
   backlog item with character-forge-v2; see that repo's README for detail.
-- **Consume hosted worker state in this UI.** The task queue now has worker
-  registration and real heartbeats, but this app's header badge still uses
-  the temporary local process/ComfyUI check. Replace it with hosted registry
-  state and show the assigned worker's coarse progress for the current task.
 - **Automatic local renderer startup/recovery.** Starting and recovering the
   worker and ComfyUI still requires an external command/process. Worker
   pause/drain/shutdown controls are intentionally not in the current scope.
