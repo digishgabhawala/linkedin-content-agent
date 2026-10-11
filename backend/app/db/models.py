@@ -54,6 +54,13 @@ class Post(Base):
     image_task_id = Column(String, nullable=True)
     # full | lightning, as last requested by the user -- Retry reuses it.
     image_profile = Column(String, nullable=True)
+    # Phase 3a step engine (see services/steps.py). active_step: JSON
+    # {name, task_id, started_at} of the one in-flight queue task, NULL when
+    # idle. step_context: JSON carried between steps (attempt count, ...).
+    # step_error: last failed step's message, shown with "Retry step".
+    active_step = Column(Text, nullable=True)
+    step_context = Column(Text, nullable=True)
+    step_error = Column(Text, nullable=True)
 
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

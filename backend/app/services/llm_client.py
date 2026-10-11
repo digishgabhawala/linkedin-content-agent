@@ -129,3 +129,51 @@ async def _await_result(client: httpx.AsyncClient, task_id: str, deadline: datet
                 raise TextGenerationUnavailable(
                     "The worker went offline while this text was waiting -- restart the "
                     "local worker on your laptop and try again.")
+
+
+# --- Non-blocking step API (phase 3a): submit one step, read its status later.
+
+class TaskQueueUnavailable(Exception):
+    """The task-queue could not be reached to submit a step."""
+
+
+IMAGE_TASK_TYPE = "image_generation"
+
+
+async def _post_task(client: httpx.AsyncClient, body: dict) -> str:
+    try:
+        resp = await client.post(f"{settings.task_queue_url}/api/tasks", json=body, timeout=30)
+        resp.raise_for_status()
+        return resp.json()["id"]
+    except httpx.HTTPError as e:
+        raise TaskQueueUnavailable(
+            f"Task queue unreachable at {settings.task_queue_url}: {e}") from e
+
+
+async def submit_text(client: httpx.AsyncClient, req: LLMRequest) -> str:
+    """Enqueue one LLM step and return its task id at once. No worker needs to
+    be online: the task waits in the queue until one is (or until its
+    deadline, after which the worker discards it as expired)."""
+    deadline = datetime.now(timezone.utc) + timedelta(minutes=settings.step_max_wait_minutes)
+    return await _post_task(client, {
+        "task_type": TEXT_TASK_TYPE,
+        "payload": {"messages": req.messages, "temperature": req.temperature,
+                    "reasoning": req.reasoning, "response_format": req.response_format,
+                    "deadline_at": deadline.isoformat()},
+        "lease_minutes": 20,
+        "retention_hours": 2,  # prompts carry post content through the hosted queue
+    })
+
+
+async def submit_image(client: httpx.AsyncClient, payload: dict) -> str:
+    # 240-min lease: a full render on a loaded Mac has taken ~2h (see
+    # image_service history); heartbeating workers shorten it anyway.
+    return await _post_task(client, {"task_type": IMAGE_TASK_TYPE, "payload": payload,
+                                  "lease_minutes": 240})
+
+
+async def get_task(client: httpx.AsyncClient, task_id: str) -> dict:
+    """The queue's current view of a step's task (status, result, error, progress)."""
+    resp = await client.get(f"{settings.task_queue_url}/api/tasks/{task_id}", timeout=15)
+    resp.raise_for_status()
+    return resp.json()
