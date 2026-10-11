@@ -8,9 +8,7 @@ think=false: this is a classification call, not creative work, keep it fast.
 """
 from __future__ import annotations
 
-import httpx
-
-from ..services.llm_client import LLMRequest, chat
+from ..services.llm_client import LLMRequest
 from .taxonomy import CATEGORIES
 
 _CATEGORY_LIST = "\n".join(f"- {name}: {desc}" for name, desc in CATEGORIES.items())
@@ -39,9 +37,3 @@ def parse_category(raw: str) -> str:
         category = ""
 
     return category if category in CATEGORIES else "technical_deep_dive"
-
-
-async def infer_category(client: httpx.AsyncClient, brief: str) -> str:
-    req = build_category_request(brief)
-    return parse_category(await chat(client, req.messages, temperature=req.temperature,
-                                     reasoning=req.reasoning, response_format=req.response_format))

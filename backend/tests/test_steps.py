@@ -231,8 +231,14 @@ def test_lock_and_image_steps(db):
 
     post = _run(steps.start_image(db, q, post.id, "lightning"))
     assert post.status == "image_queued" and _active(post) == "image"
+    assert post.image_profile == "lightning"  # remembered for Retry
     assert q.latest()["task_type"] == "image_generation"
     assert q.latest()["payload"]["profile"] == "lightning"
+    q.latest().update(status="claimed", claimed_by="mac-worker", progress_stage="rendering",
+                      progress_message="ComfyUI is generating the image")
+    post = _run(steps.advance(db, q, post))  # live progress for the image card
+    assert post.image_queue_status == "claimed" and post.image_worker_id == "mac-worker"
+    assert post.image_progress_stage == "rendering"
     q.finish(result={"image_artifact_id": "a1"})
     post = _run(steps.advance(db, q, post))
     assert post.status == "image_ready" and post.final_image_path == "https://storage/img.png"
@@ -268,3 +274,16 @@ def test_two_pollers_never_submit_the_next_step_twice(tmp_path):
     assert len(q.submitted()) == 2  # category + exactly ONE clarify
     s1.close()
     s2.close()
+
+
+def test_image_submitted_before_the_step_engine_still_completes(db):
+    q = FakeQueue()
+    _run(q.post("/api/tasks", {"task_type": "image_generation", "payload": {}}, 30))
+    post = Post(character_id="gtee_dev", brief="b", status="image_queued", post_text="p",
+                scene_instruction="waving", seed=3, clarify_transcript="[]",
+                image_task_id="t1")  # pre-3a: no active_step recorded
+    db.add(post)
+    db.commit()
+    q.finish(result={"image_artifact_id": "a1"})
+    post = _run(steps.advance(db, q, post))
+    assert post.status == "image_ready" and post.final_image_path == "https://storage/img.png"

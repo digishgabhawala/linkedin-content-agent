@@ -26,10 +26,8 @@ from __future__ import annotations
 import json
 import re
 
-import httpx
-
 from ..config import settings
-from ..services.llm_client import LLMRequest, chat
+from ..services.llm_client import LLMRequest
 from .content_sources import (
     load_character_personality,
     load_example_for_category,
@@ -205,11 +203,6 @@ def _request(system_prompt: str, user_content: str, think: bool,
         response_format="json" if json_format else "text")
 
 
-async def _run(client: httpx.AsyncClient, req: LLMRequest) -> str:
-    return await chat(client, req.messages, temperature=req.temperature,
-                      reasoning=req.reasoning, response_format=req.response_format)
-
-
 def _strip_wrapping_quotes(text: str) -> str:
     text = text.strip()
     if len(text) >= 2 and text[0] in "\"'“" and text[-1] in "\"'”":
@@ -348,23 +341,3 @@ def build_rewrite_request(previous_text: str, instruction: str,
                     f"{_FACT_REMINDER}\n\n{_HOOK_REMINDER}\n\n{_LENGTH_REMINDER}\n\nWrite the revised LinkedIn post, "
                     "applying the instruction while keeping the structure/voice rules.")
     return _request(system_prompt, user_content, think=True, temperature=0.5)
-
-
-# Transitional blocking wrappers (removed once the step engine owns all calls).
-async def clarify_turn(client, brief, transcript, category):
-    return parse_clarify(await _run(client, build_clarify_request(brief, transcript, category)))
-
-
-async def build_escalation_message(client, brief, category, failing_pillars):
-    return parse_escalation(await _run(client, build_escalation_request(brief, category,
-                                                                        failing_pillars)))
-
-
-async def generate_draft(client, brief, transcript, character_id=None, category=None):
-    return parse_draft(await _run(client, build_draft_request(brief, transcript, character_id,
-                                                              category)))
-
-
-async def regenerate_draft(client, previous_text, instruction, character_id=None, category=None):
-    return parse_draft(await _run(client, build_rewrite_request(previous_text, instruction,
-                                                                character_id, category)))

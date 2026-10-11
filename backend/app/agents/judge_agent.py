@@ -22,9 +22,7 @@ from __future__ import annotations
 
 import json
 
-import httpx
-
-from ..services.llm_client import LLMRequest, chat
+from ..services.llm_client import LLMRequest
 from .content_sources import load_all_examples
 from .taxonomy import GATE_PILLARS, OPTIMIZATION_PILLARS
 
@@ -222,13 +220,3 @@ def parse_judge(raw: str) -> dict[str, dict]:
             scores[pillar] = {"score": 0.0,
                               "reason": "judge did not return a valid score for this pillar"}
     return scores
-
-
-async def score_post(client: httpx.AsyncClient, post_text: str, brief: str,
-                     transcript: list[dict], category: str,
-                     character_personality: str | None,
-                     user_profile: str) -> dict[str, dict]:
-    req = build_judge_request(post_text, brief, transcript, category,
-                              character_personality, user_profile)
-    return parse_judge(await chat(client, req.messages, temperature=req.temperature,
-                                  reasoning=req.reasoning, response_format=req.response_format))
