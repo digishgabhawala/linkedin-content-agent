@@ -287,3 +287,12 @@ def test_image_submitted_before_the_step_engine_still_completes(db):
     q.finish(result={"image_artifact_id": "a1"})
     post = _run(steps.advance(db, q, post))
     assert post.status == "image_ready" and post.final_image_path == "https://storage/img.png"
+
+
+def test_after_a_hand_off_the_new_step_does_not_show_the_old_tasks_status(db):
+    q = FakeQueue()
+    post = _run(steps.start_create(db, q, LONG_BRIEF, None))
+    q.finish('{"category": "lessons_learned"}')
+    post = _run(steps.advance(db, q, post))
+    assert _active(post) == "clarify"
+    assert getattr(post, "active_task", None) is None  # not the finished category task

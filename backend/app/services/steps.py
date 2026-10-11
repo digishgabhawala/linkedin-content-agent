@@ -335,6 +335,7 @@ async def advance(db: Session, client, post: Post) -> Post:
         db.refresh(post)
         return post
     post.active_step = None
+    post.active_task = None  # that task is finished; a next step starts fresh
     step, ctx = active["name"], _ctx(post)
 
     if task["status"] == "failed":
