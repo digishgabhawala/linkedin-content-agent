@@ -114,3 +114,46 @@ def test_readiness_counts_idle_worker_owned_comfyui_as_reclaimable():
 def test_readiness_still_warns_for_user_started_comfyui():
     details = _mem(6.0) | {"comfyui": {"state": "ready", "managed": False}}
     assert readiness_from_workers([_worker("mac", details=details)])["enough_memory"] is False
+
+
+class JsonClient:
+    def __init__(self, payload=None, error=None):
+        self.payload, self.error, self.urls = payload, error, []
+
+    async def get(self, url, timeout):
+        self.urls.append(url)
+        client = self
+
+        class Resp:
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                if client.error:
+                    raise client.error
+                return client.payload
+
+        return Resp()
+
+
+def test_hosted_status_success_path_reads_worker_list(monkeypatch):
+    from app.services import renderer_status_service as svc
+
+    monkeypatch.setattr(svc.settings, "task_queue_url", "https://queue.example")
+    client = JsonClient(payload=[_worker("mac")])
+    result = asyncio.run(hosted_renderer_status(client))
+    assert client.urls == ["https://queue.example/api/workers"]
+    assert result["reachable"] is True
+    assert result["online_count"] == 1
+
+
+def test_non_json_reply_counts_as_unreachable():
+    result = asyncio.run(hosted_renderer_status(JsonClient(error=ValueError("not json"))))
+    assert result["reachable"] is False
+    assert result["message"] == "Task queue unreachable"
+
+
+def test_non_list_reply_counts_as_unreachable():
+    result = asyncio.run(hosted_renderer_status(JsonClient(payload={"detail": "oops"})))
+    assert result["reachable"] is False
+    assert asyncio.run(hosted_image_readiness(JsonClient(payload={"x": 1})))["source"] == "unknown"

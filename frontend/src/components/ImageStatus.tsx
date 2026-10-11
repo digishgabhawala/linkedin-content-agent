@@ -9,7 +9,9 @@ interface Props {
 
 function elapsedLabel(startedAt: string | null): string {
   if (!startedAt) return ''
-  const mins = Math.max(0, Math.floor((Date.now() - new Date(startedAt).getTime()) / 60000))
+  const started = new Date(startedAt).getTime()
+  if (!Number.isFinite(started)) return ''
+  const mins = Math.max(0, Math.floor((Date.now() - started) / 60000))
   if (mins < 1) return 'just started'
   return `${mins} min ago`
 }

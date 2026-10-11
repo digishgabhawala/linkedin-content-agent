@@ -6,7 +6,9 @@ interface Props {
 
 function ago(iso: string | null): string {
   if (!iso) return ''
-  const mins = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 60000))
+  const seen = new Date(iso).getTime()
+  if (!Number.isFinite(seen)) return 'at an unknown time'
+  const mins = Math.max(0, Math.floor((Date.now() - seen) / 60000))
   if (mins < 1) return 'just now'
   if (mins < 60) return `${mins} min ago`
   return `${Math.floor(mins / 60)} h ago`

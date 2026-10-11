@@ -36,6 +36,10 @@ export function ImageMemoryDialog({
             <span className="font-semibold text-amber-700">{readiness.available_gb ?? '?'} GB</span>{' '}
             (reported about once a minute). Nothing will be closed automatically.
           </p>
+          <p className="mt-2 text-xs text-gray-500">
+            After you free memory, the new figure can take up to a minute to show here — if a
+            rescan still looks low, wait a moment and rescan again.
+          </p>
         </div>
 
         <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">

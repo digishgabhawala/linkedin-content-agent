@@ -26,6 +26,7 @@ _NEW_POST_COLUMNS = {
     "escalation_reason": "TEXT",
     "scene_asset_name": "TEXT",
     "image_task_id": "TEXT",
+    "image_profile": "TEXT",
 }
 
 
