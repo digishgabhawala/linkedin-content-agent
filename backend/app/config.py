@@ -37,6 +37,11 @@ class Settings(BaseSettings):
     # image generation runs entirely on a separate worker machine.
     character_forge_v2_path: str = str(_WORKSPACE_ROOT / "character-forge-v2")
     task_queue_url: str = "http://127.0.0.1:8000"
+    # Text generation goes through the task-queue too (see llm_client.py):
+    # how long one LLM call may wait for a worker (e.g. behind a render), and
+    # how often to poll for its result.
+    text_max_wait_minutes: float = 60
+    text_poll_seconds: float = 1
     comfyui_url: str = "http://127.0.0.1:8188"
     image_stall_timeout_minutes: int = 40
 
