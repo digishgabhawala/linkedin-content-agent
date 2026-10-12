@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from ..config import settings
 from ..db.database import get_db
 from ..db.models import Post, PostDraft, SceneAsset
 from ..services import feedback_service as fs
@@ -24,15 +25,22 @@ from ..services.renderer_status_service import (
 router = APIRouter(prefix="/api")
 
 
+def _task_queue_headers() -> dict:
+    # This app's own machine key for the task-queue (never a human session);
+    # needed for admin-only reads such as GET /api/workers.
+    key = settings.task_queue_api_key
+    return {"X-API-Key": key} if key else {}
+
+
 async def get_http_client():
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(headers=_task_queue_headers()) as client:
         yield client
 
 
 async def get_llm_client():
-    # Plain HTTP client: LLM calls are task-queue tasks (see llm_client.py);
-    # the local worker owns Ollama and its memory now.
-    async with httpx.AsyncClient() as client:
+    # LLM calls are task-queue tasks (see llm_client.py); the local worker
+    # owns Ollama and its memory.
+    async with httpx.AsyncClient(headers=_task_queue_headers()) as client:
         yield client
 
 
