@@ -22,6 +22,7 @@ const STAGE_LABELS: Record<string, string> = {
   rendering: 'Rendering',
   uploading: 'Uploading',
   starting_comfyui: 'Starting ComfyUI',
+  freeing_memory: 'Freeing memory from the text model',
 }
 
 // Older workers never report a stage -- a claimed task is still rendering.
