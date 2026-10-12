@@ -42,12 +42,12 @@ def main() -> int:
         with httpx.Client(timeout=60) as http:
             row = sync_character(db, http, url, key, args.bucket, args.forge_path,
                                  args.character_id)
+        print(f"{row.character_id}: {row.display_name!r}, hero {row.hero_image_url}")
     except SyncError as e:
         print(f"sync failed: {e}", file=sys.stderr)
         return 1
     finally:
         db.close()
-    print(f"{row.character_id}: {row.display_name!r}, hero {row.hero_image_url}")
     return 0
 
 
