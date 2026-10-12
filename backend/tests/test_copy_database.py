@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.db.copy import TargetNotEmpty, copy_database
 from app.db.database import build_engine, init_db
-from app.db.models import Feedback, Post, PostDraft, SceneAsset
+from app.db.models import Character, Feedback, Post, PostDraft, SceneAsset
 
 
 def _seed(url):
@@ -16,7 +16,7 @@ def _seed(url):
         post = Post(id="p1", character_id="gtee_dev", brief="brief", status="image_ready",
                     image_profile="lightning", final_image_path="https://x/y.png",
                     created_at=datetime(2026, 10, 1, 9, 30))  # noqa: DTZ001 -- naive UTC, like every DB column
-        s.add_all([post,
+        s.add_all([Character(character_id="gtee_dev", personality="dry humor"), post,
                    SceneAsset(id="s1", name="office", detail_text="a desk"),
                    PostDraft(id="d1", post_id="p1", version=1, post_text="hello",
                              generated_by="draft"),
@@ -30,7 +30,7 @@ def test_copies_every_table_preserving_ids_and_values(tmp_path):
 
     counts = copy_database(source, target, "linkedin")
 
-    assert counts == {"posts": 1, "scene_assets": 1, "post_drafts": 1, "feedback": 1}
+    assert counts == {"characters": 1, "posts": 1, "scene_assets": 1, "post_drafts": 1, "feedback": 1}
     with Session(build_engine(target, "linkedin")) as s:
         post = s.get(Post, "p1")
         assert post.image_profile == "lightning"
@@ -38,11 +38,12 @@ def test_copies_every_table_preserving_ids_and_values(tmp_path):
         assert post.created_at == datetime(2026, 10, 1, 9, 30)  # noqa: DTZ001
         assert s.scalars(select(PostDraft.post_id)).all() == ["p1"]
         assert s.get(SceneAsset, "s1").name == "office"
+        assert post.character.personality == "dry humor"
 
 
 def test_refuses_to_copy_into_a_target_that_has_data(tmp_path):
     source, target = f"sqlite:///{tmp_path / 'src.db'}", f"sqlite:///{tmp_path / 'dst.db'}"
     _seed(source)
     copy_database(source, target, "linkedin")
-    with pytest.raises(TargetNotEmpty, match="posts"):
+    with pytest.raises(TargetNotEmpty, match="already has 1 rows"):
         copy_database(source, target, "linkedin")

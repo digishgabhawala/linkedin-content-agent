@@ -2,6 +2,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy.orm import relationship
 
 from .database import Base
 
@@ -42,11 +43,9 @@ class Post(Base):
     # the source of truth, this just lets the UI point back to it.
     scene_asset_name = Column(String, nullable=True)
     seed = Column(Integer, nullable=True)
-    # A full external URL (Supabase Storage, via the task-queue's artifact
-    # store) once image generation moved off direct subprocess.Popen -- see
-    # image_service.py. Kept the same column/name for backward
-    # compatibility; _image_url() in routes.py distinguishes an external
-    # URL from the older local-filesystem-path convention.
+    # The rendered image's Supabase Storage URL (via the task-queue's
+    # artifact store). Very old rows may hold a local file path, which is no
+    # longer served -- _image_url() in routes.py shows the placeholder.
     final_image_path = Column(String, nullable=True)
     image_job_error = Column(Text, nullable=True)
     # id of the task-queue task tracking this post's in-flight/most-recent
@@ -65,6 +64,25 @@ class Post(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     image_started_at = Column(DateTime, nullable=True)  # stall-detection anchor
+
+    # The mascot (personality, placeholder image). No foreign key: a post
+    # whose mascot has no row yet still works, just without them.
+    character = relationship(
+        "Character", primaryjoin="foreign(Post.character_id) == Character.character_id",
+        viewonly=True, lazy="selectin")
+
+
+class Character(Base):
+    """The brand mascot, copied from character-forge-v2 by
+    scripts/sync_character.py. owner_id is filled once users exist."""
+    __tablename__ = "characters"
+
+    character_id = Column(String, primary_key=True)
+    owner_id = Column(String, nullable=True)
+    display_name = Column(String, nullable=True)
+    personality = Column(Text, nullable=True)
+    hero_image_url = Column(String, nullable=True)  # public Storage URL, ?v=<sync time>
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow)
 
 
 class PostDraft(Base):
