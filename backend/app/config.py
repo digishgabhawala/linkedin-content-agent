@@ -42,6 +42,9 @@ class Settings(BaseSettings):
     # image generation runs entirely on a separate worker machine.
     character_forge_v2_path: str = str(_WORKSPACE_ROOT / "character-forge-v2")
     task_queue_url: str = "http://127.0.0.1:8000"
+    # This app's machine key for the task-queue (sent as X-API-Key). Its
+    # sha256 is registered in task-queue's SERVICE_API_KEYS.
+    task_queue_api_key: str | None = None
     # Max minutes a queued step (LLM or image) may wait for a worker before
     # the worker discards it as expired; the user can then retry the step.
     step_max_wait_minutes: float = 60
