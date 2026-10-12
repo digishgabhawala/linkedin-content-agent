@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Literal
 
 import httpx
@@ -88,18 +87,11 @@ class GenerateImageRequest(BaseModel):
 # --------------------------------------------------------------------------
 
 def _image_url(post: Post) -> str | None:
-    if post.final_image_path:
-        # A full external URL (Supabase Storage, via the task-queue's
-        # artifact store) once image generation moved off direct
-        # subprocess.Popen -- vs. the older convention of a local
-        # filesystem path served under our own /generated mount. Both
-        # still occur: existing rows from before this change hold a local
-        # path, new ones hold a URL.
-        if post.final_image_path.startswith(("http://", "https://")):
-            return post.final_image_path
-        return f"/generated/images/{Path(post.final_image_path).name}"
-    placeholder = isvc.ensure_placeholder_image(post.character_id)
-    return f"/generated/images/{placeholder.name}" if placeholder else None
+    # The post's own render (a Supabase Storage URL), else the mascot's hero
+    # image as a placeholder. Old local file paths are no longer servable.
+    if post.final_image_path and post.final_image_path.startswith(("http://", "https://")):
+        return post.final_image_path
+    return post.character.hero_image_url if post.character else None
 
 
 def _utc_iso(value: datetime | None) -> str | None:
