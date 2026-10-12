@@ -7,9 +7,7 @@ workers, failure kinds) and serves the local hero placeholder.
 """
 from __future__ import annotations
 
-import shutil
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 
 from ..config import settings
 from ..db.models import Post
@@ -93,24 +91,3 @@ def image_failure_kind(post: Post) -> str | None:
     if post.image_job_error.startswith(INSUFFICIENT_MEMORY_PREFIX):
         return "insufficient_memory"
     return None
-
-
-def ensure_placeholder_image(character_id: str) -> Path | None:
-    """Copy hero.png into our own generated/images/ on first use so it's
-    servable under the same /generated static mount as real renders. Direct
-    filesystem read of character-forge-v2's workspace -- no API call needed
-    when both are local processes on the same machine. Returns None if that
-    character's hero.png doesn't exist (no hero locked, OR
-    character-forge-v2 simply isn't present on this machine at all -- e.g.
-    once image generation runs entirely on a separate worker machine, this
-    just gracefully stops offering a placeholder rather than erroring)."""
-    d = Path(settings.generated_dir) / "images"
-    d.mkdir(parents=True, exist_ok=True)
-    dest = d / f"placeholder_{character_id}.png"
-    if dest.exists():
-        return dest
-    hero = Path(settings.character_forge_v2_path) / "workspace" / character_id / "hero.png"
-    if not hero.exists():
-        return None
-    shutil.copy(hero, dest)
-    return dest
