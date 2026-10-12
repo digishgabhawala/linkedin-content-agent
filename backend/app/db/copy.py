@@ -12,7 +12,7 @@ from . import models
 from .database import build_engine, init_db
 
 # Parents before children (post_drafts/feedback reference posts).
-TABLES = [models.Post.__table__, models.SceneAsset.__table__,
+TABLES = [models.Character.__table__, models.Post.__table__, models.SceneAsset.__table__,
           models.PostDraft.__table__, models.Feedback.__table__]
 
 
