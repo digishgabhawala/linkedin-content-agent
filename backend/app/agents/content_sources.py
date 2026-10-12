@@ -1,8 +1,7 @@
-"""content_sources.py -- loads the three config dimensions from
-CONTENT_QUALITY_DESIGN.md: user_profile.md (WHO), skill.md (HOW), and the
-character's personality (the brand mascot's POV, read directly off
-character-forge-v2's character.json -- never imported, per this workspace's
-"standalone, shares nothing" convention, just a plain file read).
+"""content_sources.py -- loads the content_config files from
+CONTENT_QUALITY_DESIGN.md: user_profile.md (WHO), skill.md (HOW) and the
+example posts/scenes. The third dimension, the character's personality, is
+the `characters` table row (see scripts/sync_character.py).
 
 Files are read fresh on every call rather than cached at import time -- these
 are meant to be hand-edited between runs (skill.md evolves, user_profile.md
@@ -11,7 +10,6 @@ restart to pick up an edit.
 """
 from __future__ import annotations
 
-import json
 import random
 from pathlib import Path
 
@@ -111,18 +109,3 @@ def load_scene_examples(sample_size: int = 5) -> str:
         _, _, body = example.partition("\n")
         chosen.append(f"MOOD: {mood}\n{body.strip()}")
     return "\n\n".join(chosen)
-
-
-def load_character_personality(character_id: str) -> str | None:
-    """Reads the character's `personality` field straight off character.json.
-    Returns None if the character/card doesn't exist -- callers should
-    degrade gracefully (character voice is a seasoning, not a requirement)."""
-    card_path = (Path(settings.character_forge_v2_path) / "workspace" /
-                character_id / "character.json")
-    if not card_path.exists():
-        return None
-    try:
-        card = json.loads(card_path.read_text())
-    except json.JSONDecodeError:
-        return None
-    return card.get("personality")

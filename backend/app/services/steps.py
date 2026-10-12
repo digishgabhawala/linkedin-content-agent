@@ -29,7 +29,7 @@ from sqlalchemy import update
 from sqlalchemy.orm import Session
 
 from ..agents.category_agent import build_category_request, parse_category
-from ..agents.content_sources import load_character_personality, load_user_profile
+from ..agents.content_sources import load_user_profile
 from ..agents.draft_agent import (
     build_clarify_request,
     build_draft_request,
@@ -150,6 +150,10 @@ def _transcript(post: Post) -> list[dict]:
     return _answered_turns(_load_transcript(post))
 
 
+def _personality(post: Post) -> str | None:
+    return post.character.personality if post.character else None
+
+
 def build(db: Session, post: Post, step: str, ctx: dict):
     """-> ("text", LLMRequest) or ("image", payload). Pure apart from DB reads."""
     if step == "category":
@@ -157,15 +161,15 @@ def build(db: Session, post: Post, step: str, ctx: dict):
     if step == "clarify":
         return "text", build_clarify_request(post.brief, _transcript(post), post.category)
     if step == "draft":
-        return "text", build_draft_request(post.brief, _transcript(post), post.character_id,
+        return "text", build_draft_request(post.brief, _transcript(post), _personality(post),
                                            post.category)
     if step == "rewrite":
         return "text", build_rewrite_request(post.post_text, ctx["instruction"],
-                                             post.character_id, post.category)
+                                             _personality(post), post.category)
     if step == "judge":
         return "text", build_judge_request(
             post.post_text, post.brief, _transcript(post), post.category,
-            load_character_personality(post.character_id), load_user_profile())
+            _personality(post), load_user_profile())
     if step == "escalation":
         return "text", build_escalation_request(post.brief, post.category, ctx["failing"])
     if step == "scene":

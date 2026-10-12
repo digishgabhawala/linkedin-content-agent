@@ -1,5 +1,9 @@
 """Mascot data comes from the `characters` table, not the laptop's forge folder."""
+import asyncio
+
 from app.db.models import Character, Post
+from app.services import steps
+from tests.test_steps import LONG_BRIEF, FakeQueue
 
 
 def test_post_loads_its_character_or_none(db_session):
@@ -11,3 +15,19 @@ def test_post_loads_its_character_or_none(db_session):
     db_session.expire_all()
     assert db_session.get(Post, "a").character.personality == "dry humor"
     assert db_session.get(Post, "b").character is None
+
+
+def test_draft_prompt_carries_the_rows_personality_only_when_present(db_session):
+    q = FakeQueue()
+    db_session.add(Character(character_id="gtee_dev", personality="asks 'is it webscale?'"))
+    with_row = Post(character_id="gtee_dev", brief=LONG_BRIEF, status="clarifying",
+                    category="lessons_learned", clarify_transcript="[]")
+    no_row = Post(character_id="nobody", brief=LONG_BRIEF, status="clarifying",
+                  category="lessons_learned", clarify_transcript="[]")
+    db_session.add_all([with_row, no_row])
+    db_session.commit()
+    for post in (with_row, no_row):
+        asyncio.run(steps._begin(db_session, q, post, "draft", {"automatic": True, "attempt": 1}))
+        system = q.latest()["payload"]["messages"][0]["content"]
+        assert ("is it webscale?" in system) is (post is with_row)
+        assert ("BRAND CHARACTER VOICE" in system) is (post is with_row)
