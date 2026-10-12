@@ -116,6 +116,9 @@ cp .env.example .env      # defaults work out of the box on this machine
 .venv/bin/uvicorn app.main:app --port 11000
 ```
 
+Once per mascot, copy it into the database and Storage with
+`scripts/sync_character.py` (see "The mascot lives in the database" below).
+
 **Frontend** (separate terminal):
 ```bash
 cd frontend
@@ -157,10 +160,8 @@ nothing is written to a fixed system path.
 | `DATABASE_URL` | *(unset -> SQLite at `DB_PATH`)* | where the app's data lives -- any SQLAlchemy URL, e.g. the Supabase pooler `postgresql+psycopg://...:6543/postgres` |
 | `DB_SCHEMA` | `linkedin` | Postgres schema for this app's tables (keeps them apart from other apps in the same Supabase project); ignored for SQLite |
 | `DB_PATH` | `posts.db` | SQLite file used only when `DATABASE_URL` is unset |
-| `GENERATED_DIR` | `generated` | rendered images + placeholder, at `backend/generated/` -- pure output, safe to delete, gets rebuilt |
 | `DEFAULT_CHARACTER_ID` | `gtee_dev` | which character-forge-v2 character to use -- see note below |
 | `CLARIFY_MAX_TURNS` | `5` | hard cap on clarify questions -- a safety valve, not the real quality gate (see "Content quality pipeline" below) |
-| `CHARACTER_FORGE_V2_PATH` | *(auto-resolved absolute path)* | only used for direct filesystem reads now (character personality, local hero.png placeholder) -- only set if your layout differs from the standard sibling-directory tree |
 | `TASK_QUEUE_URL` | `http://127.0.0.1:8000` | where image generation is actually submitted -- point at a real deployment (e.g. Vercel) to use a shared/remote queue |
 | `IMAGE_STALL_TIMEOUT_MINUTES` | `40` | flags an unusually long queue wait or render runtime separately; render time starts only when a worker claims the task (independent of the task-queue lease/reclaim mechanism) |
 
@@ -175,9 +176,22 @@ cd backend
 # --target defaults to DATABASE_URL, --schema to DB_SCHEMA
 ```
 
-`CHARACTER_FORGE_V2_PATH` resolves automatically to the correct absolute
-sibling path (computed from this file's own location) -- you should not
-need to touch it unless you've moved things around.
+**The mascot lives in the database, not on disk.** The backend never reads
+`character-forge-v2`: the mascot's personality (seasoning every draft) and
+its hero image (the placeholder before a post has its own image) come from
+the `characters` table, with the image in a public Supabase Storage bucket.
+Copy a mascot in once, and again whenever it changes, from the machine that
+has `character-forge-v2` (the service key stays on that machine; the
+backend never needs it):
+
+```bash
+cd backend
+SUPABASE_URL=https://<project-ref>.supabase.co SUPABASE_SERVICE_KEY=<service key> \
+  .venv/bin/python scripts/sync_character.py gtee_dev
+# --forge-path defaults to ../../character-forge-v2, --bucket to STORAGE_BUCKET or "linkedin"
+```
+
+Without a row, drafts just lack the mascot's voice and no placeholder shows.
 
 **On `DEFAULT_CHARACTER_ID`:** this is a character's permanent, stable ID
 (e.g. `gtee_dev`) -- not a hero-candidate filename like `hero_3000.png`.
@@ -292,6 +306,18 @@ version:
   design (see CONTENT_QUALITY_DESIGN.md) -- the shape supports adding a
   second profile as a second file later, but there's no config/storage
   layer for N profiles yet.
+- **Smaller stored images.** Renders are ~0.9 MB 1024x1024 PNGs; saving
+  them as WebP (done in the worker before upload) would cut that ~5x.
+  Not urgent: Supabase free tier's 1 GB holds ~1,000 images and we expect
+  50-100 live at a time.
+- **Hero image creation as a worker task.** Add a task-queue task type
+  (e.g. `character_creation`) whose worker runs character-forge-v2's
+  setup flow, generates the mascot's hero image and uploads it, so the
+  app fills the `characters` row from the result. This replaces the
+  one-time `scripts/sync_character.py` for new (per-user) mascots.
+- **Image archival / cleanup.** Superseded renders (Retry, new image) stay
+  in Storage unreferenced; add archival of old posts and removal of
+  orphaned images.
 - **Calibrate pillar weights against real data** once there's a body of
   real drafts to tune against (see Known issues above).
 
@@ -300,7 +326,7 @@ version:
 ```
 backend/app/
   config.py                    -- Settings (env-driven, see table above)
-  db/models.py                  -- Post, PostDraft, Feedback, SceneAsset (SQLAlchemy)
+  db/models.py                  -- Post, Character, PostDraft, Feedback, SceneAsset (SQLAlchemy)
   agents/category_agent.py      -- infer_category (brief -> category, via llm_client)
   agents/taxonomy.py            -- categories, gate/optimization pillars, weights, weighted_score
   agents/draft_agent.py         -- clarify_turn, generate_draft, regenerate_draft (via llm_client)
@@ -312,8 +338,9 @@ backend/app/
   services/image_service.py     -- submits image_generation tasks to task-queue, polls for
                                     results (sync_image_task, called from GET /posts/{id})
   services/feedback_service.py  -- capture-only create/list
+  services/character_sync.py    -- mascot -> Storage + `characters` row (scripts/sync_character.py)
   api/routes.py                  -- all HTTP routes
-  main.py                        -- FastAPI app, mounts /generated
+  main.py                        -- FastAPI app
 backend/content_config/
   user_profile.md, skill.md, example_posts.md, scene_examples.md -- WHO/HOW inputs to
     drafting + scene derivation, see CONTENT_QUALITY_DESIGN.md
