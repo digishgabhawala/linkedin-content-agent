@@ -157,3 +157,17 @@ def test_non_list_reply_counts_as_unreachable():
     result = asyncio.run(hosted_renderer_status(JsonClient(payload={"detail": "oops"})))
     assert result["reachable"] is False
     assert asyncio.run(hosted_image_readiness(JsonClient(payload={"x": 1})))["source"] == "unknown"
+
+
+def test_readiness_counts_worker_loaded_ollama_model_as_reclaimable():
+    # Found live: after the text steps the worker's own qwen3 model (~14.5 GB)
+    # is still loaded; the worker unloads it before any render, so the user
+    # must not be warned about memory the worker frees itself.
+    details = _mem(1.19) | {"ollama": {"model": "qwen3:14b", "loaded": True, "managed": True},
+                            "comfyui": {"state": "stopped", "managed": False}}
+    assert readiness_from_workers([_worker("mac", details=details)])["enough_memory"] is True
+
+
+def test_readiness_still_warns_when_ollama_was_loaded_by_someone_else():
+    details = _mem(1.19) | {"ollama": {"model": "qwen3:14b", "loaded": True, "managed": False}}
+    assert readiness_from_workers([_worker("mac", details=details)])["enough_memory"] is False

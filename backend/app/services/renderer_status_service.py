@@ -75,9 +75,14 @@ def readiness_from_workers(workers: list[dict]) -> dict:
     mem = best["details"]["memory"]
     required = (mem.get("required_gb") or {}).get("full", 0.0)
     comfyui = best["details"].get("comfyui") or {}
-    # An idle ComfyUI the worker started keeps its models loaded, which reads
-    # as "used" memory -- but the worker stops it before refusing a render.
-    reclaimable = comfyui.get("managed") is True and best.get("state") != "busy"
+    ollama = best["details"].get("ollama") or {}
+    # Memory the worker frees by itself before rendering doesn't count as
+    # "used": its own idle ComfyUI (stopped before refusing a render) and its
+    # own loaded Ollama model (always unloaded before an image task). Things
+    # the user started are never touched, so those still count.
+    reclaimable = best.get("state") != "busy" and (
+        comfyui.get("managed") is True
+        or (ollama.get("managed") is True and ollama.get("loaded") is True))
     return {
         "source": "worker",
         "worker_name": best.get("name") or best.get("id"),
