@@ -4,13 +4,15 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from .api.routes import public_router, router
+from .config import settings
 from .db.database import init_db
 from .services.llm_client import TaskQueueUnavailable
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    init_db()
+    if settings.auto_init_db:
+        init_db()
     yield
 
 
