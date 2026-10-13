@@ -1,0 +1,20 @@
+[project]
+# Vercel's Python runtime installs from this list with `uv` (same lesson as
+# task-queue). Keep it in sync with backend/requirements.txt.
+name = "linkedin-content-agent"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi==0.115.5",
+    "uvicorn[standard]==0.32.1",
+    "sqlalchemy==2.0.36",
+    "httpx==0.28.0",
+    "python-dotenv==1.0.1",
+    "pydantic-settings==2.6.1",
+    "psycopg[binary]==3.2.13",
+]
+
+[tool.vercel]
+# Explicit entrypoint (task-queue found auto-detection ambiguous). The API is
+# the FastAPI app; the built frontend is served from public/ as static files.
+entrypoint = "backend.app.main:app"

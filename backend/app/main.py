@@ -1,7 +1,9 @@
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from .api.routes import public_router, router
 from .config import settings
@@ -33,3 +35,14 @@ def _text_error_handler(status: int):
 
 for _exc, _status in _TEXT_ERRORS.items():
     app.add_exception_handler(_exc, _text_error_handler(_status))
+
+
+def mount_frontend(web: FastAPI, dist: str | Path) -> None:
+    """Serve the built frontend after the API routes (which match first).
+    Vercel's static step only sees files present before the build, so the
+    app serves its own build output, like task-queue's admin page."""
+    if Path(dist, "index.html").is_file():
+        web.mount("/", StaticFiles(directory=dist, html=True), name="frontend")
+
+
+mount_frontend(app, settings.frontend_dist)

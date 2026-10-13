@@ -18,3 +18,8 @@ backend/generated/images/
 
 # OS cruft
 .DS_Store
+
+# Vercel
+.vercel
+public/
+.env*
