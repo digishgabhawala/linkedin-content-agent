@@ -10,6 +10,7 @@ os.environ["AUTH_ENABLED"] = "false"
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
 from app.db import (
     models,  # noqa: F401 -- registers Post/PostDraft/SceneAsset/Feedback on Base
@@ -31,3 +32,37 @@ def db_session():
     finally:
         session.close()
         engine.dispose()
+
+
+@pytest.fixture()
+def api():
+    """TestClient on a fresh in-memory DB with a FakeQueue for task-queue calls."""
+    from fastapi.testclient import TestClient
+
+    from app.api import routes
+    from app.db.database import get_db
+    from app.main import app
+    from tests.test_steps import FakeQueue
+
+    engine = create_engine("sqlite://", connect_args={"check_same_thread": False},
+                           poolclass=StaticPool)
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+    tc = TestClient(app)  # no `with`: lifespan (real init_db) is not run
+    tc.queue = FakeQueue()  # tests may swap it (e.g. for a DownQueue)
+
+    def db():
+        s = Session()
+        try:
+            yield s
+        finally:
+            s.close()
+
+    async def client():
+        yield tc.queue
+
+    app.dependency_overrides[get_db] = db
+    app.dependency_overrides[routes.get_http_client] = client
+    app.dependency_overrides[routes.get_llm_client] = client
+    yield tc
+    app.dependency_overrides.clear()
