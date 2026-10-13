@@ -124,10 +124,11 @@ Once per mascot, copy it into the database and Storage with
 cd frontend
 npm install
 npm run dev
-# -> http://localhost:11001
+# -> http://localhost:11001/linkedin/
 ```
 
-Open `http://localhost:11001` and start with a brief.
+Open `http://localhost:11001/linkedin/` and start with a brief. The API lives
+under `/api/linkedin/` (the same paths as on the shared domain).
 
 ## Development
 
@@ -229,6 +230,17 @@ Environment (Production and Preview; never the browser):
 | `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY` | the shared Supabase project |
 | `AUTH_ALLOWED_EMAILS` | who may sign in (comma list) |
 | `AUTO_INIT_DB` | `false` -- no schema checks on every cold start |
+
+**Paths.** The app is served at `/linkedin/` and its API at
+`/api/linkedin/`, exactly as on `aibharatiya.com`, so the parent site
+forwards paths unchanged (`/` and `/linkedin` redirect to `/linkedin/`;
+unknown paths under `/linkedin/` load the app):
+
+```text
+/linkedin            -> https://linkedin-content-agent-mauve.vercel.app/linkedin/
+/linkedin/:path*     -> https://linkedin-content-agent-mauve.vercel.app/linkedin/:path*
+/api/linkedin/:path* -> https://linkedin-content-agent-mauve.vercel.app/api/linkedin/:path*
+```
 
 **Schema changes:** the hosted app never creates tables or columns. Before
 deploying a change that adds any, run `.venv/bin/python scripts/init_db.py`

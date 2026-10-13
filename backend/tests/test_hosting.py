@@ -30,7 +30,7 @@ def test_startup_skips_table_setup_when_auto_init_is_off(monkeypatch):
     assert calls == [1]
 
 
-def test_built_frontend_is_served_next_to_the_api(tmp_path):
+def _site(tmp_path):
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
 
@@ -40,10 +40,35 @@ def test_built_frontend_is_served_next_to_the_api(tmp_path):
     web = FastAPI()
     web.include_router(main.public_router)
     main.mount_frontend(web, tmp_path)
-    client = TestClient(web)
-    assert client.get("/").text == "<html>app</html>"
-    assert client.get("/assets/app.js").text == "js"
-    assert client.get("/api/health").json() == {"status": "ok"}
+    return TestClient(web, follow_redirects=False)
+
+
+def test_frontend_is_served_under_linkedin(tmp_path):
+    client = _site(tmp_path)
+    assert client.get("/linkedin/").text == "<html>app</html>"
+    assert client.get("/linkedin/assets/app.js").text == "js"
+    assert client.get("/api/linkedin/health").json() == {"status": "ok"}
+
+
+def test_deep_links_fall_back_to_the_app(tmp_path):
+    client = _site(tmp_path)
+    assert client.get("/linkedin/posts/abc").text == "<html>app</html>"
+    assert client.get("/linkedin/assets/missing.js").status_code == 404
+
+
+def test_redirects_stay_on_the_callers_host(tmp_path):
+    # Behind the parent site's rewrite, an absolute redirect would send the
+    # browser to this deployment's own hostname.
+    client = _site(tmp_path)
+    for path in ("/", "/linkedin"):
+        resp = client.get(path)
+        assert resp.status_code in (307, 308)
+        assert resp.headers["location"] == "/linkedin/"
+
+
+def test_old_api_paths_are_gone(api):
+    assert api.get("/api/posts").status_code == 404
+    assert api.get("/api/linkedin/posts").status_code == 200
 
 
 def test_missing_frontend_build_is_skipped(tmp_path):

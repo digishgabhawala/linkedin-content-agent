@@ -13,7 +13,7 @@ from app import auth
 from app.config import Settings, settings
 from app.main import app
 
-PUBLIC = {"/api/health", "/api/auth/config"}
+PUBLIC = {"/api/linkedin/health", "/api/linkedin/auth/config"}
 
 
 def _token(exp_in: float = 3600) -> str:
@@ -43,7 +43,7 @@ def supabase(monkeypatch):
     auth.clear_cache()
 
 
-def _get(api, path="/api/posts", token=None):
+def _get(api, path="/api/linkedin/posts", token=None):
     headers = {"Authorization": f"Bearer {token}"} if token else {}
     return api.get(path, headers=headers)
 
@@ -61,7 +61,7 @@ def test_invalid_token_is_401(api, supabase):
 
 def test_allowed_email_any_case_gets_in(api, supabase):
     assert _get(api, token=_token()).status_code == 200
-    me = _get(api, "/api/auth/me", token=_token())
+    me = _get(api, "/api/linkedin/auth/me", token=_token())
     assert me.json() == {"email": "admin@example.com"}
 
 
@@ -120,14 +120,14 @@ def test_forbidden_users_are_not_cached(api, supabase):
 
 
 def test_public_routes_need_no_token(api, supabase):
-    assert _get(api, "/api/health").status_code == 200
-    config = _get(api, "/api/auth/config").json()
+    assert _get(api, "/api/linkedin/health").status_code == 200
+    config = _get(api, "/api/linkedin/auth/config").json()
     assert config == {"enabled": True, "supabase_url": "https://proj.supabase.co",
                       "supabase_publishable_key": "pk"}
 
 
 def test_config_hides_values_when_disabled(api):
-    assert _get(api, "/api/auth/config").json() == {
+    assert _get(api, "/api/linkedin/auth/config").json() == {
         "enabled": False, "supabase_url": None, "supabase_publishable_key": None}
 
 
