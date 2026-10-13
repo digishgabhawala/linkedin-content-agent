@@ -22,6 +22,10 @@ class Settings(BaseSettings):
     # sets false so a fresh function doesn't run schema checks on every start
     # -- run scripts/init_db.py before a deploy that changes the schema.
     auto_init_db: bool = True
+    # The built frontend (npm run build), served by this app next to the API
+    # -- one deployment, one origin. Skipped when the folder doesn't exist
+    # (local development uses the Vite dev server instead).
+    frontend_dist: str = str(_BACKEND_DIR.parent / "frontend" / "dist")
 
     default_character_id: str = "gtee_dev"
     clarify_max_turns: int = 5

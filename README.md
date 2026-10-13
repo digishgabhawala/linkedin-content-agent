@@ -203,6 +203,37 @@ character's permanent `hero.png`, and from then on only the stable
 `character_id` matters -- the seed/filename of whichever candidate got
 chosen has no ongoing significance.
 
+## Deploying (Vercel)
+
+One Vercel project (`linkedin-content-agent`) serves both the API and the
+built frontend from the same FastAPI function -- one origin, no CORS. Config:
+`vercel.json` (framework `fastapi`, region `hnd1` = Tokyo, next to the
+Supabase database; the build command builds `frontend/dist`) and the root
+`pyproject.toml` (Python dependencies for Vercel's `uv`, kept in sync with
+`backend/requirements.txt`; entrypoint `backend.app.main:app`).
+
+```bash
+npx vercel deploy          # preview (behind Vercel's own login)
+npx vercel deploy --prod   # production
+```
+
+Environment (Production and Preview; never the browser):
+
+| Key | Value |
+|---|---|
+| `DATABASE_URL` | Supabase transaction pooler (port 6543) |
+| `DB_SCHEMA` | `linkedin` |
+| `TASK_QUEUE_URL` | task-queue's own Vercel URL |
+| `TASK_QUEUE_API_KEY` | this app's raw service key |
+| `AUTH_ENABLED` | `true` |
+| `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY` | the shared Supabase project |
+| `AUTH_ALLOWED_EMAILS` | who may sign in (comma list) |
+| `AUTO_INIT_DB` | `false` -- no schema checks on every cold start |
+
+**Schema changes:** the hosted app never creates tables or columns. Before
+deploying a change that adds any, run `.venv/bin/python scripts/init_db.py`
+from `backend/` with `DATABASE_URL` pointing at production.
+
 ## Content quality pipeline
 
 Full design in [CONTENT_QUALITY_DESIGN.md](CONTENT_QUALITY_DESIGN.md); short
