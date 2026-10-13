@@ -1,4 +1,5 @@
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings
 
 
@@ -32,11 +33,37 @@ class Settings(BaseSettings):
     step_max_wait_minutes: float = 60
     image_stall_timeout_minutes: int = 40
 
+    # Login (same approach as task-queue's admin page): a Supabase session
+    # whose email is on the allow list. Off by default so local development
+    # and tests need no login; production sets AUTH_ENABLED=true.
+    auth_enabled: bool = False
+    supabase_url: str = ""
+    supabase_publishable_key: str = ""  # browser-safe; also verifies tokens
+    auth_allowed_emails: str = ""  # comma list, case-insensitive
+    # How long a verified token is trusted before Supabase is asked again
+    # (never past the token's own expiry). The UI polls every few seconds.
+    auth_cache_minutes: float = 15
+
     class Config:
         env_file = ".env"
         # Retired keys (e.g. OLLAMA_URL/OLLAMA_MODEL -- text generation now
         # runs on the task-queue worker) must not stop the app starting.
         extra = "ignore"
+
+    @property
+    def allowed_emails(self) -> frozenset[str]:
+        return frozenset(e.strip().casefold() for e in self.auth_allowed_emails.split(",")
+                         if e.strip())
+
+    @model_validator(mode="after")
+    def _auth_settings_complete(self) -> "Settings":
+        if self.auth_enabled:
+            for name in ("supabase_url", "supabase_publishable_key"):
+                if not getattr(self, name):
+                    raise ValueError(f"{name.upper()} is required when AUTH_ENABLED=true")
+            if not self.allowed_emails:
+                raise ValueError("AUTH_ALLOWED_EMAILS is required when AUTH_ENABLED=true")
+        return self
 
 
 settings = Settings()

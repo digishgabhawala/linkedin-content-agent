@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from ..auth import AuthUser, current_user, public_auth_config
 from ..config import settings
 from ..db.database import get_db
 from ..db.models import Post, PostDraft, SceneAsset
@@ -21,7 +22,10 @@ from ..services.renderer_status_service import (
     hosted_renderer_status,
 )
 
-router = APIRouter(prefix="/api")
+# Every route needs a signed-in, allowed user (app/auth.py) -- set once here
+# so a new route can't be left open by mistake. Only public_router is open.
+public_router = APIRouter(prefix="/api")
+router = APIRouter(prefix="/api", dependencies=[Depends(current_user)])
 
 
 def _task_queue_headers() -> dict:
@@ -219,9 +223,19 @@ def _serialize_scene_asset(asset: SceneAsset) -> dict:
 # routes
 # --------------------------------------------------------------------------
 
-@router.get("/health")
+@public_router.get("/health")
 def health():
     return {"status": "ok"}
+
+
+@public_router.get("/auth/config")
+def auth_config():
+    return public_auth_config()
+
+
+@router.get("/auth/me")
+def auth_me(user: AuthUser = Depends(current_user)):
+    return {"email": user.email}
 
 
 @router.get("/resources/image-readiness")

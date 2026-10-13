@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from .api.routes import router
+from .api.routes import public_router, router
 from .db.database import init_db
 from .services.llm_client import TaskQueueUnavailable
 
@@ -15,6 +15,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="LinkedIn Content Agent", lifespan=lifespan)
+app.include_router(public_router)
 app.include_router(router)
 
 # LLM calls run on the user's worker via the task-queue (llm_client.py); turn
