@@ -2,7 +2,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -57,16 +57,22 @@ class _AppFiles(StaticFiles):
 async def _to_app(request):
     # A path-only Location: behind the parent site's rewrite, an absolute URL
     # would send the browser to this deployment's own hostname.
-    return RedirectResponse(f"{APP_PATH}/", status_code=308)
+    return RedirectResponse(APP_PATH, status_code=308)
 
 
 def mount_frontend(web: FastAPI, dist: str | Path) -> None:
-    """Serve the built frontend under /linkedin/ after the API routes.
+    """Serve the built frontend under /linkedin after the API routes.
     Vercel's static step only sees files present before the build, so the
     app serves its own build output, like task-queue's admin page."""
-    if Path(dist, "index.html").is_file():
+    index = Path(dist, "index.html")
+    if index.is_file():
+        async def app_page(request):
+            return FileResponse(index)
+
         web.add_route("/", _to_app, include_in_schema=False)
-        web.add_route(APP_PATH, _to_app, include_in_schema=False)
+        # Served as-is, not redirected to /linkedin/: the parent site strips
+        # trailing slashes, so that redirect would loop.
+        web.add_route(APP_PATH, app_page, include_in_schema=False)
         web.mount(APP_PATH, _AppFiles(directory=dist, html=True), name="frontend")
 
 

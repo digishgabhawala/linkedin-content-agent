@@ -233,11 +233,11 @@ Environment (Production and Preview; never the browser):
 
 **Paths.** The app is served at `/linkedin/` and its API at
 `/api/linkedin/`, exactly as on `aibharatiya.com`, so the parent site
-forwards paths unchanged (`/` and `/linkedin` redirect to `/linkedin/`;
+forwards paths unchanged (`/` redirects to `/linkedin`; `/linkedin` and `/linkedin/` both serve the app;
 unknown paths under `/linkedin/` load the app):
 
 ```text
-/linkedin            -> https://linkedin-content-agent-mauve.vercel.app/linkedin/
+/linkedin            -> https://linkedin-content-agent-mauve.vercel.app/linkedin
 /linkedin/:path*     -> https://linkedin-content-agent-mauve.vercel.app/linkedin/:path*
 /api/linkedin/:path* -> https://linkedin-content-agent-mauve.vercel.app/api/linkedin/:path*
 ```

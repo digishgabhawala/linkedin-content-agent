@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import { API_BASE, authClient, getAccessToken, loadAuthConfig, setUnauthorizedHandler } from '../auth'
 import { SessionContext } from '../session'
+import { SuiteBrand } from './SuiteBrand'
 
 type GateState =
   | { kind: 'loading' }
@@ -29,7 +30,11 @@ function Card({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
       <div className="w-full max-w-sm rounded-xl border border-gray-200 bg-white p-6 shadow-sm space-y-4">
-        <h1 className="text-lg font-bold text-gray-900">LinkedIn Content Agent</h1>
+        <SuiteBrand />
+        <div>
+          <p className="font-mono text-xs text-[#4946c7]">AI Bharatiyaa account</p>
+          <h1 className="text-lg font-bold text-gray-900">LinkedIn Content Agent</h1>
+        </div>
         {children}
       </div>
     </div>
