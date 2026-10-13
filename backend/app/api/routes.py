@@ -24,8 +24,11 @@ from ..services.renderer_status_service import (
 
 # Every route needs a signed-in, allowed user (app/auth.py) -- set once here
 # so a new route can't be left open by mistake. Only public_router is open.
-public_router = APIRouter(prefix="/api")
-router = APIRouter(prefix="/api", dependencies=[Depends(current_user)])
+# Paths match the shared domain (aibharatiya.com/api/linkedin/...), so the
+# parent site forwards them unchanged.
+API_PREFIX = "/api/linkedin"
+public_router = APIRouter(prefix=API_PREFIX)
+router = APIRouter(prefix=API_PREFIX, dependencies=[Depends(current_user)])
 
 
 def _task_queue_headers() -> dict:

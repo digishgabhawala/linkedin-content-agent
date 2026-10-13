@@ -2,8 +2,9 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from .api.routes import public_router, router
 from .config import settings
@@ -37,12 +38,36 @@ for _exc, _status in _TEXT_ERRORS.items():
     app.add_exception_handler(_exc, _text_error_handler(_status))
 
 
+APP_PATH = "/linkedin"
+
+
+class _AppFiles(StaticFiles):
+    """Static files, except an unknown page path serves the app itself, so a
+    deep link or a refresh under /linkedin/ still loads the frontend."""
+
+    async def get_response(self, path, scope):
+        try:
+            return await super().get_response(path, scope)
+        except StarletteHTTPException as exc:
+            if exc.status_code != 404 or path.startswith("assets/"):
+                raise
+            return await super().get_response("index.html", scope)
+
+
+async def _to_app(request):
+    # A path-only Location: behind the parent site's rewrite, an absolute URL
+    # would send the browser to this deployment's own hostname.
+    return RedirectResponse(f"{APP_PATH}/", status_code=308)
+
+
 def mount_frontend(web: FastAPI, dist: str | Path) -> None:
-    """Serve the built frontend after the API routes (which match first).
+    """Serve the built frontend under /linkedin/ after the API routes.
     Vercel's static step only sees files present before the build, so the
     app serves its own build output, like task-queue's admin page."""
     if Path(dist, "index.html").is_file():
-        web.mount("/", StaticFiles(directory=dist, html=True), name="frontend")
+        web.add_route("/", _to_app, include_in_schema=False)
+        web.add_route(APP_PATH, _to_app, include_in_schema=False)
+        web.mount(APP_PATH, _AppFiles(directory=dist, html=True), name="frontend")
 
 
 mount_frontend(app, settings.frontend_dist)

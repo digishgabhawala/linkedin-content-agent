@@ -3,7 +3,7 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 // Browser side of the login (backend: app/auth.py). The Supabase URL and
 // browser-safe key come from the backend, so nothing is baked into the
 // build. Default session storage: apps on the same origin share one login.
-export const API_BASE = '/api'
+export const API_BASE = '/api/linkedin'
 
 export interface AuthConfig {
   enabled: boolean
