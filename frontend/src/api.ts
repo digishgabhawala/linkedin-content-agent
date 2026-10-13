@@ -6,14 +6,14 @@ import type {
   ImageReadiness,
   RendererStatus,
 } from './types'
-
-const BASE = '/api'
+import { API_BASE, getAccessToken, notifyUnauthorized } from './auth'
 
 async function req<T>(path: string, opts?: RequestInit): Promise<T> {
-  const res = await fetch(BASE + path, {
-    headers: { 'Content-Type': 'application/json' },
-    ...opts,
-  })
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  const token = await getAccessToken()
+  if (token) headers.Authorization = `Bearer ${token}`
+  const res = await fetch(API_BASE + path, { ...opts, headers })
+  if (res.status === 401) notifyUnauthorized()
   if (!res.ok) {
     const err = await res.json().catch(() => ({}))
     throw new Error(err.detail ?? `Request failed: ${res.status}`)
