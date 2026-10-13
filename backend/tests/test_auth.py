@@ -12,7 +12,6 @@ from pydantic import ValidationError
 from app import auth
 from app.config import Settings, settings
 from app.main import app
-from tests.test_step_routes import api  # noqa: F401 -- fixture
 
 PUBLIC = {"/api/health", "/api/auth/config"}
 

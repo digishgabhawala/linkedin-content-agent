@@ -1,13 +1,7 @@
 """HTTP layer: compute actions acknowledge at once; status checks advance."""
 import httpx
-import pytest
-from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
 
-from app.api import routes
-from app.db.database import Base, get_db
+from app.db.database import get_db
 from app.main import app
 from tests.test_steps import LONG_BRIEF, FakeQueue
 
@@ -15,32 +9,6 @@ from tests.test_steps import LONG_BRIEF, FakeQueue
 class DownQueue(FakeQueue):
     async def post(self, url, json, timeout):
         raise httpx.ConnectError("down")
-
-
-@pytest.fixture()
-def api():
-    engine = create_engine("sqlite://", connect_args={"check_same_thread": False},
-                           poolclass=StaticPool)
-    Base.metadata.create_all(engine)
-    Session = sessionmaker(bind=engine)
-    tc = TestClient(app)  # no `with`: lifespan (real init_db) is not run
-    tc.queue = FakeQueue()  # tests may swap it (e.g. for a DownQueue)
-
-    def db():
-        s = Session()
-        try:
-            yield s
-        finally:
-            s.close()
-
-    async def client():
-        yield tc.queue
-
-    app.dependency_overrides[get_db] = db
-    app.dependency_overrides[routes.get_http_client] = client
-    app.dependency_overrides[routes.get_llm_client] = client
-    yield tc
-    app.dependency_overrides.clear()
 
 
 def test_create_acknowledges_immediately_with_the_active_step(api):
