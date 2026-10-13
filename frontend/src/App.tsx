@@ -18,9 +18,11 @@ import { SceneAssetsPanel } from './components/SceneAssetsPanel'
 import { ImageMemoryDialog } from './components/ImageMemoryDialog'
 import { JourneyProgress } from './components/JourneyProgress'
 import { RendererStatusBadge } from './components/RendererStatusBadge'
+import { useSession } from './session'
 import { StepStatus } from './components/StepStatus'
 
 export default function App() {
+  const session = useSession()
   const { post, setPost } = usePostPolling(null)
   const [history, setHistory] = useState<Post[]>([])
   const [busy, setBusy] = useState(false)
@@ -271,7 +273,17 @@ export default function App() {
               Brief → draft → lock → character render → post
             </p>
           </div>
-          <RendererStatusBadge status={rendererStatus} />
+          <div className="flex items-center gap-4">
+            <RendererStatusBadge status={rendererStatus} />
+            {session.email && (
+              <div className="flex items-center gap-2 text-xs text-gray-600">
+                <span>{session.email}</span>
+                <button onClick={session.signOut} className="rounded-lg border border-gray-300 px-2 py-1 hover:bg-gray-50">
+                  Sign out
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </header>
 
