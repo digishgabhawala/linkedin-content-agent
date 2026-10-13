@@ -19,6 +19,7 @@ import { ImageMemoryDialog } from './components/ImageMemoryDialog'
 import { JourneyProgress } from './components/JourneyProgress'
 import { RendererStatusBadge } from './components/RendererStatusBadge'
 import { useSession } from './session'
+import { SuiteBrand } from './components/SuiteBrand'
 import { StepStatus } from './components/StepStatus'
 
 export default function App() {
@@ -268,7 +269,8 @@ export default function App() {
       <header className="border-b border-gray-200 bg-white px-6 py-4 shadow-sm">
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-6">
           <div>
-            <h1 className="text-xl font-bold text-gray-900">LinkedIn Content Agent</h1>
+            <SuiteBrand />
+            <h1 className="mt-2 text-xl font-bold text-gray-900">LinkedIn Content Agent</h1>
             <p className="text-xs text-gray-500 mt-0.5">
               Brief → draft → lock → character render → post
             </p>

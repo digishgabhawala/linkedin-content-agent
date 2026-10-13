@@ -45,6 +45,10 @@ def _site(tmp_path):
 
 def test_frontend_is_served_under_linkedin(tmp_path):
     client = _site(tmp_path)
+    # Both spellings serve the app: the parent site strips trailing slashes
+    # (/linkedin/ -> /linkedin), so redirecting /linkedin -> /linkedin/
+    # would loop.
+    assert client.get("/linkedin").text == "<html>app</html>"
     assert client.get("/linkedin/").text == "<html>app</html>"
     assert client.get("/linkedin/assets/app.js").text == "js"
     assert client.get("/api/linkedin/health").json() == {"status": "ok"}
@@ -56,14 +60,12 @@ def test_deep_links_fall_back_to_the_app(tmp_path):
     assert client.get("/linkedin/assets/missing.js").status_code == 404
 
 
-def test_redirects_stay_on_the_callers_host(tmp_path):
+def test_root_redirect_stays_on_the_callers_host(tmp_path):
     # Behind the parent site's rewrite, an absolute redirect would send the
     # browser to this deployment's own hostname.
-    client = _site(tmp_path)
-    for path in ("/", "/linkedin"):
-        resp = client.get(path)
-        assert resp.status_code in (307, 308)
-        assert resp.headers["location"] == "/linkedin/"
+    resp = _site(tmp_path).get("/")
+    assert resp.status_code in (307, 308)
+    assert resp.headers["location"] == "/linkedin"
 
 
 def test_old_api_paths_are_gone(api):
