@@ -1,6 +1,12 @@
 
+from pathlib import Path
+
 from pydantic import model_validator
 from pydantic_settings import BaseSettings
+
+# backend/ -- content_config paths resolve from here, not from the working
+# folder (a hosted function doesn't start in backend/).
+_BACKEND_DIR = Path(__file__).resolve().parents[1]
 
 
 class Settings(BaseSettings):
@@ -12,17 +18,20 @@ class Settings(BaseSettings):
     # apps sharing the same Supabase project). Ignored for SQLite.
     db_schema: str = "linkedin"
     db_path: str = "posts.db"  # SQLite fallback only
+    # Create/upgrade tables on startup. Convenient locally; hosted (serverless)
+    # sets false so a fresh function doesn't run schema checks on every start
+    # -- run scripts/init_db.py before a deploy that changes the schema.
+    auto_init_db: bool = True
 
     default_character_id: str = "gtee_dev"
     clarify_max_turns: int = 5
     max_recalibration_passes: int = 3
 
     # WHO (user_profile.md) / HOW (skill.md) config -- see CONTENT_QUALITY_DESIGN.md.
-    # Relative to cwd (backend/), same convention as db_path.
-    user_profile_path: str = "content_config/user_profile.md"
-    skill_path: str = "content_config/skill.md"
-    example_posts_path: str = "content_config/example_posts.md"
-    scene_examples_path: str = "content_config/scene_examples.md"
+    user_profile_path: str = str(_BACKEND_DIR / "content_config/user_profile.md")
+    skill_path: str = str(_BACKEND_DIR / "content_config/skill.md")
+    example_posts_path: str = str(_BACKEND_DIR / "content_config/example_posts.md")
+    scene_examples_path: str = str(_BACKEND_DIR / "content_config/scene_examples.md")
 
     task_queue_url: str = "http://127.0.0.1:8000"
     # This app's machine key for the task-queue (sent as X-API-Key). Its
