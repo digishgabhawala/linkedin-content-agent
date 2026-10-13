@@ -23,3 +23,4 @@ backend/generated/images/
 .vercel
 public/
 .env*
+.python-version
