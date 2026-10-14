@@ -68,6 +68,21 @@ class Settings(BaseSettings):
         return frozenset(e.strip().casefold() for e in self.auth_allowed_emails.split(",")
                          if e.strip())
 
+    @property
+    def task_queue_api_url(self) -> str:
+        """Resolve the canonical suite page to the queue's scoped API.
+
+        ``TASK_QUEUE_URL`` intentionally contains the public product URL so
+        links, logs, notebooks, and deployments share one canonical address.
+        Direct service origins and explicit API bases remain compatible.
+        """
+        normalized = self.task_queue_url.rstrip("/")
+        if normalized.endswith(("/api", "/api/queue")):
+            return normalized
+        if normalized.endswith("/queue"):
+            return f"{normalized.removesuffix('/queue')}/api/queue"
+        return f"{normalized}/api"
+
     @model_validator(mode="after")
     def _auth_settings_complete(self) -> "Settings":
         if self.auth_enabled:

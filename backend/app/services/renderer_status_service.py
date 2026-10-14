@@ -95,7 +95,7 @@ def readiness_from_workers(workers: list[dict]) -> dict:
 
 async def _fetch_workers(client: httpx.AsyncClient) -> list[dict] | None:
     try:
-        resp = await client.get(f"{settings.task_queue_url}/api/workers", timeout=10)
+        resp = await client.get(f"{settings.task_queue_api_url}/workers", timeout=10)
         resp.raise_for_status()
         workers = resp.json()
     except (httpx.HTTPError, ValueError):  # ValueError: body isn't JSON

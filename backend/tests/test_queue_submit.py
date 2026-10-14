@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 import httpx
 import pytest
 
+from app.config import settings
 from app.db.models import Post
 from app.services.llm_client import (
     LLMRequest,
@@ -49,7 +50,8 @@ def test_submit_text_enqueues_and_returns_immediately_with_task_id():
     q = Queue()
     assert asyncio.run(submit_text(q, REQ)) == "task-9"
     url, body = q.posted
-    assert url.endswith("/api/tasks") and body["task_type"] == "text_generation"
+    assert url == f"{settings.task_queue_api_url}/tasks"
+    assert body["task_type"] == "text_generation"
     assert body["payload"]["messages"] == REQ.messages
     assert body["payload"]["response_format"] == "json" and body["payload"]["reasoning"] is False
     assert body["lease_minutes"] == 20 and body["retention_hours"] == 2

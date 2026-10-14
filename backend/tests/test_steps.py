@@ -120,7 +120,7 @@ class FakeQueue:
         return R()
 
     async def get(self, url, timeout):
-        if "/api/artifacts/" in url:
+        if "/artifacts/" in url:
             data = {"url": "https://storage/img.png"}
         else:
             data = dict(self.tasks[url.rsplit("/", 1)[1]])
@@ -330,7 +330,7 @@ def test_claim_is_committed_before_any_network_wait(tmp_path):
 
     class Watching(FakeQueue):
         async def get(self, url, timeout):
-            if "/api/artifacts/" in url:  # a network await inside apply()
+            if "/artifacts/" in url:  # a network await inside apply()
                 with Session() as other:
                     seen["active_step_in_db"] = other.get(Post, pid).active_step
             return await super().get(url, timeout)
@@ -353,7 +353,7 @@ def test_claim_is_committed_before_any_network_wait(tmp_path):
 
 class BadArtifactQueue(FakeQueue):
     async def get(self, url, timeout):
-        if "/api/artifacts/" in url:
+        if "/artifacts/" in url:
             request = httpx.Request("GET", url)
             raise httpx.HTTPStatusError("500", request=request,
                                         response=httpx.Response(500, request=request))

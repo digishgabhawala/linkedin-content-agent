@@ -42,7 +42,7 @@ IMAGE_TASK_TYPE = "image_generation"
 
 async def _post_task(client: httpx.AsyncClient, body: dict) -> str:
     try:
-        resp = await client.post(f"{settings.task_queue_url}/api/tasks", json=body, timeout=30)
+        resp = await client.post(f"{settings.task_queue_api_url}/tasks", json=body, timeout=30)
         resp.raise_for_status()
         return resp.json()["id"]
     except httpx.HTTPError as e:
@@ -74,6 +74,6 @@ async def submit_image(client: httpx.AsyncClient, payload: dict) -> str:
 
 async def get_task(client: httpx.AsyncClient, task_id: str) -> dict:
     """The queue's current view of a step's task (status, result, error, progress)."""
-    resp = await client.get(f"{settings.task_queue_url}/api/tasks/{task_id}", timeout=15)
+    resp = await client.get(f"{settings.task_queue_api_url}/tasks/{task_id}", timeout=15)
     resp.raise_for_status()
     return resp.json()

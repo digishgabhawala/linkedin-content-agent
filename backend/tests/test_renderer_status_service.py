@@ -147,6 +147,16 @@ def test_hosted_status_success_path_reads_worker_list(monkeypatch):
     assert result["online_count"] == 1
 
 
+def test_hosted_status_uses_suite_scoped_api(monkeypatch):
+    from app.services import renderer_status_service as svc
+
+    monkeypatch.setattr(
+        svc.settings, "task_queue_url", "https://ai-bharatiya-web.vercel.app/queue")
+    client = JsonClient(payload=[])
+    asyncio.run(hosted_renderer_status(client))
+    assert client.urls == ["https://ai-bharatiya-web.vercel.app/api/queue/workers"]
+
+
 def test_non_json_reply_counts_as_unreachable():
     result = asyncio.run(hosted_renderer_status(JsonClient(error=ValueError("not json"))))
     assert result["reachable"] is False

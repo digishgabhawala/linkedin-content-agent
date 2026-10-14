@@ -92,7 +92,7 @@ loop itself isn't tied to any one voice, seniority level, or industry.
   "No worker can generate text right now".
 - **A [`task-queue`](../task-queue) instance to submit image work to** --
   either run one locally (see that repo's README) or point `TASK_QUEUE_URL`
-  at a shared/deployed one (e.g. a Vercel deployment). This app only
+  at `https://ai-bharatiya-web.vercel.app/queue`. This app only
   submits tasks and polls for results; it never talks to ComfyUI directly.
 - **At least one image worker actually claiming tasks**, somewhere -- this
   machine, a friend's laptop, a Colab GPU session
@@ -163,7 +163,7 @@ nothing is written to a fixed system path.
 | `DB_PATH` | `posts.db` | SQLite file used only when `DATABASE_URL` is unset |
 | `DEFAULT_CHARACTER_ID` | `gtee_dev` | which character-forge-v2 character to use -- see note below |
 | `CLARIFY_MAX_TURNS` | `5` | hard cap on clarify questions -- a safety valve, not the real quality gate (see "Content quality pipeline" below) |
-| `TASK_QUEUE_URL` | `http://127.0.0.1:8000` | where image generation is actually submitted -- point at a real deployment (e.g. Vercel) to use a shared/remote queue |
+| `TASK_QUEUE_URL` | `http://127.0.0.1:8000` | canonical queue product URL; production uses `https://ai-bharatiya-web.vercel.app/queue`, which maps to `/api/queue` automatically |
 | `IMAGE_STALL_TIMEOUT_MINUTES` | `40` | flags an unusually long queue wait or render runtime separately; render time starts only when a worker claims the task (independent of the task-queue lease/reclaim mechanism) |
 
 **Database location is configuration.** Point `DATABASE_URL`/`DB_SCHEMA` at
@@ -224,7 +224,7 @@ Environment (Production and Preview; never the browser):
 |---|---|
 | `DATABASE_URL` | Supabase transaction pooler (port 6543) |
 | `DB_SCHEMA` | `linkedin` |
-| `TASK_QUEUE_URL` | task-queue's own Vercel URL |
+| `TASK_QUEUE_URL` | `https://ai-bharatiya-web.vercel.app/queue` |
 | `TASK_QUEUE_API_KEY` | this app's raw service key |
 | `AUTH_ENABLED` | `true` |
 | `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY` | the shared Supabase project |
