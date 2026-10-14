@@ -242,7 +242,7 @@ async def apply(db: Session, client, post: Post, step: str, result: dict, ctx: d
         return {}
     if step == "image":
         artifact_id = result["image_artifact_id"]
-        resp = await client.get(f"{settings.task_queue_url}/api/artifacts/{artifact_id}",
+        resp = await client.get(f"{settings.task_queue_api_url}/artifacts/{artifact_id}",
                                 timeout=15)
         resp.raise_for_status()
         post.final_image_path = resp.json()["url"]
