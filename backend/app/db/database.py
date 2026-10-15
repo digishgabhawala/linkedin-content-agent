@@ -54,6 +54,12 @@ _NEW_POST_COLUMNS = {
     "step_error": "TEXT",
 }
 
+_NEW_CHARACTER_COLUMNS = {
+    "card_json": "TEXT",
+    "hero_asset_id": "TEXT",
+    "hero_version": "INTEGER NOT NULL DEFAULT 0",
+}
+
 
 def _add_missing_post_columns(bind: Engine, schema: str) -> None:
     postgres = bind.dialect.name == "postgresql"
@@ -67,6 +73,17 @@ def _add_missing_post_columns(bind: Engine, schema: str) -> None:
                 conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {coltype}"))
 
 
+def _add_missing_character_columns(bind: Engine, schema: str) -> None:
+    postgres = bind.dialect.name == "postgresql"
+    existing = {c["name"] for c in
+                inspect(bind).get_columns("characters", schema=schema if postgres else None)}
+    table = f'"{schema}".characters' if postgres else "characters"
+    with bind.begin() as conn:
+        for column, coltype in _NEW_CHARACTER_COLUMNS.items():
+            if column not in existing:
+                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {coltype}"))
+
+
 def init_db(bind: Engine = engine, schema: str = settings.db_schema) -> None:
     from . import models  # noqa: F401 — ensures models are registered
     if bind.dialect.name == "postgresql":
@@ -74,6 +91,7 @@ def init_db(bind: Engine = engine, schema: str = settings.db_schema) -> None:
             conn.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{schema}"'))
     Base.metadata.create_all(bind=bind)
     _add_missing_post_columns(bind, schema)
+    _add_missing_character_columns(bind, schema)
 
 
 def get_db():

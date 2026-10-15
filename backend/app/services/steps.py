@@ -154,6 +154,29 @@ def _personality(post: Post) -> str | None:
     return post.character.personality if post.character else None
 
 
+def _remote_character_payload(post: Post) -> dict:
+    """Remote locked-hero snapshot for a stateless image worker.
+
+    Legacy characters without a synced card deliberately return no extra
+    fields, preserving the worker's local workspace fallback.
+    """
+    character = post.character
+    if not character or not character.hero_image_url or not character.card_json:
+        return {}
+    try:
+        card = json.loads(character.card_json)
+    except (TypeError, json.JSONDecodeError):
+        return {}
+    if not isinstance(card, dict):
+        return {}
+    return {
+        "hero_image_url": character.hero_image_url,
+        "hero_asset_id": character.hero_asset_id,
+        "hero_version": character.hero_version,
+        "character_card": card,
+    }
+
+
 def build(db: Session, post: Post, step: str, ctx: dict):
     """-> ("text", LLMRequest) or ("image", payload). Pure apart from DB reads."""
     if step == "category":
@@ -178,7 +201,8 @@ def build(db: Session, post: Post, step: str, ctx: dict):
         # Scene "@name" references expand at the last moment, never persisted.
         return "image", {"character_id": post.character_id,
                          "task": expand_scene_refs(db, post.scene_instruction),
-                         "seed": post.seed, "profile": ctx.get("profile", "full")}
+                         "seed": post.seed, "profile": ctx.get("profile", "full"),
+                         **_remote_character_payload(post)}
     raise ValueError(f"unknown step {step!r}")
 
 

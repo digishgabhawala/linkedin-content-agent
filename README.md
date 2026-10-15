@@ -100,9 +100,10 @@ loop itself isn't tied to any one voice, seniority level, or industry.
   `character-forge-v2` + ComfyUI). Without a worker polling, submitted
   tasks just sit `queued` forever -- there's no error for this, since from
   the queue's point of view that's a perfectly valid state. At least one
-  character must already have a locked `hero.png` on whichever machine
-  runs the worker (the shipped default, `gtee_dev`, is already seeded in
-  `character-forge-v2`).
+  synced characters carry their locked hero URL plus complete CharacterCard
+  in every image task. The worker downloads/caches that remote hero, so it
+  no longer needs `workspace/<id>/hero.png` locally. Older unsynced character
+  rows retain the original local-workspace fallback.
 - Ports `11000` (backend) and `11001` (frontend) free.
 
 ## Setup
@@ -178,9 +179,11 @@ cd backend
 ```
 
 **The mascot lives in the database, not on disk.** The backend never reads
-`character-forge-v2`: the mascot's personality (seasoning every draft) and
-its hero image (the placeholder before a post has its own image) come from
-the `characters` table, with the image in a public Supabase Storage bucket.
+`character-forge-v2`: the mascot's complete CharacterCard, personality and
+content-addressed locked-hero identity come from the `characters` table,
+with the image in a public Supabase Storage bucket. Image tasks carry a
+snapshot of that data, allowing any enrolled worker to download/cache the
+same hero instead of requiring a matching local forge workspace.
 Copy a mascot in once, and again whenever it changes, from the machine that
 has `character-forge-v2` (the service key stays on that machine; the
 backend never needs it):
@@ -192,7 +195,8 @@ SUPABASE_URL=https://<project-ref>.supabase.co SUPABASE_SERVICE_KEY=<service key
 # --forge-path defaults to ../../character-forge-v2, --bucket to STORAGE_BUCKET or "linkedin"
 ```
 
-Without a row, drafts just lack the mascot's voice and no placeholder shows.
+Without a row, drafts lack the mascot's voice and placeholder; rendering
+falls back to the legacy worker-local Character Forge workspace.
 
 **On `DEFAULT_CHARACTER_ID`:** this is a character's permanent, stable ID
 (e.g. `gtee_dev`) -- not a hero-candidate filename like `hero_3000.png`.
@@ -353,11 +357,13 @@ version:
   them as WebP (done in the worker before upload) would cut that ~5x.
   Not urgent: Supabase free tier's 1 GB holds ~1,000 images and we expect
   50-100 live at a time.
-- **Hero image creation as a worker task.** Add a task-queue task type
+- **Hero candidate creation as a worker task.** Add a task-queue task type
   (e.g. `character_creation`) whose worker runs character-forge-v2's
   setup flow, generates the mascot's hero image and uploads it, so the
   app fills the `characters` row from the result. This replaces the
   one-time `scripts/sync_character.py` for new (per-user) mascots.
+  Remote consumption of an already-locked hero is complete; generation,
+  review and locking are the next vertical slices.
 - **Image archival / cleanup.** Superseded renders (Retry, new image) stay
   in Storage unreferenced; add archival of old posts and removal of
   orphaned images.
