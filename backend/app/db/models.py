@@ -1,7 +1,16 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import (
+    Column,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import relationship
 
 from .database import Base
@@ -91,6 +100,54 @@ class Character(Base):
     hero_version = Column(Integer, nullable=False, default=0)
     hero_image_url = Column(String, nullable=True)  # public Storage URL, ?v=<content hash>
     updated_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+
+class HeroGenerationRun(Base):
+    """One request for several independently queued hero candidates."""
+    __tablename__ = "hero_generation_runs"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    character_id = Column(String, ForeignKey("characters.character_id"), nullable=False)
+    # Snapshot used for every candidate in the run. Later CharacterCard edits
+    # cannot make an old run impossible to reproduce or explain.
+    card_json = Column(Text, nullable=False)
+    profile = Column(String, nullable=False)
+    base_seed = Column(Integer, nullable=False)
+    requested_candidates = Column(Integer, nullable=False)
+    # submitting|running|completed|partial_failed|failed
+    status = Column(String, nullable=False, default="submitting")
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow,
+                        onupdate=datetime.utcnow)
+
+    character = relationship("Character", lazy="selectin")
+    candidates = relationship(
+        "HeroCandidate", back_populates="run", cascade="all, delete-orphan",
+        order_by="HeroCandidate.seed", lazy="selectin")
+
+
+class HeroCandidate(Base):
+    """A single queue task and its promoted, durable image asset."""
+    __tablename__ = "hero_candidates"
+    __table_args__ = (UniqueConstraint("run_id", "seed", name="uq_hero_candidate_run_seed"),)
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    run_id = Column(String, ForeignKey("hero_generation_runs.id"), nullable=False)
+    task_id = Column(String, nullable=True, unique=True)
+    seed = Column(Integer, nullable=False)
+    # submitting|queued|claimed|promotion_failed|ready|failed
+    status = Column(String, nullable=False, default="submitting")
+    queue_artifact_id = Column(String, nullable=True)
+    asset_id = Column(String, nullable=True)  # sha256:<hex> of durable bytes
+    storage_path = Column(String, nullable=True)
+    image_url = Column(String, nullable=True)
+    metadata_json = Column(Text, nullable=True)
+    error = Column(Text, nullable=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow,
+                        onupdate=datetime.utcnow)
+
+    run = relationship("HeroGenerationRun", back_populates="candidates")
 
 
 class PostDraft(Base):

@@ -16,13 +16,11 @@ branch, tests and review.
 - [x] Add a stateless Character Forge command and
   `hero_candidate_generation` worker contract for one candidate per queue
   task, with artifact and generation metadata returned on completion.
+- [x] Add generation-run and hero-candidate tables, submit one task per
+  candidate, and promote completed queue artifacts into durable Storage.
 
 ## Next product slices
 
-- [ ] Add generation-run and hero-candidate tables with durable Storage
-  promotion rather than treating temporary queue artifacts as brand assets;
-  this is also where the LinkedIn producer will begin submitting the new
-  task type.
 - [ ] Add Character Studio APIs for create, generation status, candidate
   review and transactional hero locking.
 - [ ] Add the Character Studio UI.

@@ -38,6 +38,7 @@ class TaskQueueUnavailable(Exception):
 
 
 IMAGE_TASK_TYPE = "image_generation"
+HERO_CANDIDATE_TASK_TYPE = "hero_candidate_generation"
 
 
 async def _post_task(client: httpx.AsyncClient, body: dict) -> str:
@@ -72,8 +73,30 @@ async def submit_image(client: httpx.AsyncClient, payload: dict) -> str:
                                   "lease_minutes": 240})
 
 
+async def submit_hero_candidate(client: httpx.AsyncClient, character_card: dict,
+                                seed: int, profile: str) -> str:
+    """Enqueue one independently retryable hero candidate."""
+    return await _post_task(client, {
+        "task_type": HERO_CANDIDATE_TASK_TYPE,
+        "payload": {"character_card": character_card, "seed": seed,
+                    "profile": profile},
+        "lease_minutes": 240,
+        # The producer promotes completed candidates to its own durable
+        # bucket; keep the temporary queue artifact long enough for a user
+        # to return after a day and trigger that hand-off.
+        "retention_hours": 48,
+    })
+
+
 async def get_task(client: httpx.AsyncClient, task_id: str) -> dict:
     """The queue's current view of a step's task (status, result, error, progress)."""
     resp = await client.get(f"{settings.task_queue_api_url}/tasks/{task_id}", timeout=15)
+    resp.raise_for_status()
+    return resp.json()
+
+
+async def get_artifact(client: httpx.AsyncClient, artifact_id: str) -> dict:
+    resp = await client.get(
+        f"{settings.task_queue_api_url}/artifacts/{artifact_id}", timeout=15)
     resp.raise_for_status()
     return resp.json()

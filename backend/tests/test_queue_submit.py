@@ -10,6 +10,7 @@ from app.services.llm_client import (
     LLMRequest,
     TaskQueueUnavailable,
     get_task,
+    submit_hero_candidate,
     submit_image,
     submit_text,
 )
@@ -71,6 +72,19 @@ def test_submit_image_uses_long_lease():
     payload = {"character_id": "gtee_dev", "task": "waving", "seed": 1, "profile": "lightning"}
     assert asyncio.run(submit_image(q, payload)) == "task-9"
     assert q.posted[1]["task_type"] == "image_generation" and q.posted[1]["lease_minutes"] == 240
+
+
+def test_submit_hero_candidate_uses_dedicated_type_and_retention():
+    q = Queue()
+    card = {"character_id": "gtee_dev", "trigger_token": "gtee_dev"}
+
+    assert asyncio.run(submit_hero_candidate(q, card, 1003, "full")) == "task-9"
+
+    body = q.posted[1]
+    assert body["task_type"] == "hero_candidate_generation"
+    assert body["payload"] == {
+        "character_card": card, "seed": 1003, "profile": "full"}
+    assert body["lease_minutes"] == 240 and body["retention_hours"] == 48
 
 
 def test_unreachable_queue_raises_clear_error():

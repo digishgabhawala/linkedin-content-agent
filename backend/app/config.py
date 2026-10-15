@@ -52,6 +52,10 @@ class Settings(BaseSettings):
     auth_enabled: bool = False
     supabase_url: str = ""
     supabase_publishable_key: str = ""  # browser-safe; also verifies tokens
+    # Server-only credential used to promote temporary queue artifacts into
+    # durable character assets. Never expose this value to the frontend.
+    supabase_service_key: str = ""
+    storage_bucket: str = "linkedin"
     auth_allowed_emails: str = ""  # comma list, case-insensitive
     # How long a verified token is trusted before Supabase is asked again
     # (never past the token's own expiry). The UI polls every few seconds.
