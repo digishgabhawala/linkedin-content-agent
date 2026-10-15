@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { api } from './api'
 import { usePostPolling } from './hooks/usePostPolling'
 import type { ImageReadiness, Post, RendererStatus } from './types'
@@ -22,8 +22,20 @@ import { useSession } from './session'
 import { SuiteBrand } from './components/SuiteBrand'
 import { StepStatus } from './components/StepStatus'
 
+const CharacterStudio = lazy(() =>
+  import('./components/CharacterStudio').then((module) => ({ default: module.CharacterStudio })),
+)
+
+type AppView = 'posts' | 'characters'
+
+function viewFromHash(): AppView {
+  return window.location.hash.startsWith('#characters') ? 'characters' : 'posts'
+}
+
 export default function App() {
   const session = useSession()
+  const [activeView, setActiveView] = useState<AppView>(viewFromHash)
+  const [characterStudioDirty, setCharacterStudioDirty] = useState(false)
   const { post, setPost } = usePostPolling(null)
   const [history, setHistory] = useState<Post[]>([])
   const [busy, setBusy] = useState(false)
@@ -35,6 +47,12 @@ export default function App() {
 
   useEffect(() => {
     refreshHistory()
+  }, [])
+
+  useEffect(() => {
+    const syncView = () => setActiveView(viewFromHash())
+    window.addEventListener('hashchange', syncView)
+    return () => window.removeEventListener('hashchange', syncView)
   }, [])
 
   useEffect(() => {
@@ -256,6 +274,9 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      <a className="app-skip-link" href={activeView === 'characters' ? '#characters-main-content' : '#posts-main-content'}>
+        Skip to main content
+      </a>
       {showMemoryDialog && imageReadiness && (
         <ImageMemoryDialog
           readiness={imageReadiness}
@@ -266,8 +287,8 @@ export default function App() {
           onCancel={() => setShowMemoryDialog(false)}
         />
       )}
-      <header className="border-b border-gray-200 bg-white px-6 py-4 shadow-sm">
-        <div className="mx-auto flex max-w-5xl items-center justify-between gap-6">
+      <header className="border-b border-gray-200 bg-white px-5 py-4 shadow-sm sm:px-6">
+        <div className="mx-auto flex max-w-5xl flex-col items-start justify-between gap-4 md:flex-row md:items-center md:gap-6">
           <div>
             <SuiteBrand />
             <h1 className="mt-2 text-xl font-bold text-gray-900">LinkedIn Content Agent</h1>
@@ -275,12 +296,12 @@ export default function App() {
               Brief → draft → lock → character render → post
             </p>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex w-full flex-wrap items-center gap-4 md:w-auto md:justify-end">
             <RendererStatusBadge status={rendererStatus} />
             {session.email && (
               <div className="flex items-center gap-2 text-xs text-gray-600">
                 <span>{session.email}</span>
-                <button onClick={session.signOut} className="rounded-lg border border-gray-300 px-2 py-1 hover:bg-gray-50">
+                <button onClick={session.signOut} className="min-h-11 rounded-lg border border-gray-300 px-3 py-2 hover:bg-gray-50">
                   Sign out
                 </button>
               </div>
@@ -289,7 +310,37 @@ export default function App() {
         </div>
       </header>
 
-      <div className="mx-auto max-w-5xl px-6 py-8 flex gap-6">
+      <nav className="app-primary-nav" aria-label="LinkedIn Content Agent">
+        <div className="app-primary-nav__inner">
+          <a
+            href="#posts"
+            aria-current={activeView === 'posts' ? 'page' : undefined}
+            onClick={(event) => {
+              if (characterStudioDirty && !window.confirm('Discard this unfinished character card?')) {
+                event.preventDefault()
+              }
+            }}
+          >
+            Posts
+          </a>
+          <a
+            href="#characters"
+            aria-current={activeView === 'characters' ? 'page' : undefined}
+          >
+            Character Studio
+          </a>
+        </div>
+      </nav>
+
+      {activeView === 'characters' ? (
+        <Suspense fallback={(
+          <main id="characters-main-content" className="mx-auto max-w-5xl px-6 py-10">
+            <p role="status" className="text-sm text-gray-600">Loading Character Studio…</p>
+          </main>
+        )}>
+          <CharacterStudio onDirtyChange={setCharacterStudioDirty} />
+        </Suspense>
+      ) : <div className="mx-auto max-w-5xl px-6 py-8 flex gap-6">
         {history.length > 0 && (
           <div className="w-64 shrink-0 space-y-4">
             <HistorySidebar
@@ -302,7 +353,7 @@ export default function App() {
           </div>
         )}
 
-        <main className="flex-1 space-y-6">
+        <main id="posts-main-content" className="flex-1 space-y-6">
           {post && <JourneyProgress post={post} activity={journeyActivity} />}
 
           {post && <StepStatus post={post} onRetry={handleRetryStep} loading={working} />}
@@ -388,7 +439,7 @@ export default function App() {
             </>
           )}
         </main>
-      </div>
+      </div>}
     </div>
   )
 }

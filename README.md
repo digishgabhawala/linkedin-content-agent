@@ -149,8 +149,10 @@ enabled:
 
 Locking a candidate updates the image, content identity, version, and exact
 CharacterCard snapshot together. Re-locking the same candidate is idempotent;
-choosing another candidate creates the next hero version. The Character
-Studio frontend is intentionally a separate backlog slice.
+choosing another candidate creates the next hero version. Open **Character
+Studio** from the frontend navigation (or use the `#characters` deep link) to
+create character cards, submit candidate runs, follow queue progress, and
+lock the approved hero reference.
 
 ## Development
 
@@ -383,13 +385,11 @@ version:
   them as WebP (done in the worker before upload) would cut that ~5x.
   Not urgent: Supabase free tier's 1 GB holds ~1,000 images and we expect
   50-100 live at a time.
-- **Hero candidate creation as a worker task.** Add a task-queue task type
-  (e.g. `character_creation`) whose worker runs character-forge-v2's
-  setup flow, generates the mascot's hero image and uploads it, so the
-  app fills the `characters` row from the result. This replaces the
-  one-time `scripts/sync_character.py` for new (per-user) mascots.
-  Remote consumption of an already-locked hero is complete; generation,
-  review and locking are the next vertical slices.
+- **Character Studio evolution.** Character-card creation, queued candidate
+  generation, durable promotion, visual review and hero locking are complete.
+  Editing/versioning cards, retrying one failed candidate, and archive/delete
+  management remain deliberately deferred; see
+  `docs/hero-backdrop-backlog.md`.
 - **Image archival / cleanup.** Superseded renders (Retry, new image) stay
   in Storage unreferenced; add archival of old posts and removal of
   orphaned images.

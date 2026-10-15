@@ -20,11 +20,18 @@ branch, tests and review.
   candidate, and promote completed queue artifacts into durable Storage.
 - [x] Add authenticated Character Studio APIs for create, generation status,
   candidate review and transactional hero locking.
+- [x] Add the responsive Character Studio UI for character-card creation,
+  queue-aware candidate generation, review and hero locking.
 
 ## Next product slices
 
-- [ ] Add the Character Studio UI.
 - [ ] Scope characters, posts and recurring backdrops by authenticated owner.
+- [ ] Add CharacterCard editing with explicit version history; today a card
+  is immutable after creation and locking preserves its generation snapshot.
+- [ ] Add an explicit retry action for an individual failed hero candidate;
+  today recovery is a new candidate run so failure history stays visible.
+- [ ] Add archive/delete management for unused characters and generation
+  runs after real usage clarifies safe retention rules.
 - [ ] Version backdrop descriptions so an old post can remain reproducible
   while still offering an explicit "use latest backdrop" action.
 - [ ] Evaluate reference-image-backed recurring environments after the
