@@ -53,4 +53,5 @@ def test_init_db_adds_columns_missing_from_an_old_table(tmp_path):
     assert {"image_profile", "image_task_id", "recalibration_count"} <= columns
     character_columns = {c["name"] for c in inspect(engine).get_columns("characters")}
     assert {"card_json", "hero_asset_id", "hero_version"} <= character_columns
-    assert {"post_drafts", "scene_assets", "feedback"} <= set(inspect(engine).get_table_names())
+    assert {"post_drafts", "scene_assets", "feedback", "hero_generation_runs",
+            "hero_candidates"} <= set(inspect(engine).get_table_names())

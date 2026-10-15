@@ -166,6 +166,8 @@ nothing is written to a fixed system path.
 | `CLARIFY_MAX_TURNS` | `5` | hard cap on clarify questions -- a safety valve, not the real quality gate (see "Content quality pipeline" below) |
 | `TASK_QUEUE_URL` | `http://127.0.0.1:8000` | canonical queue product URL; production uses `https://ai-bharatiya-web.vercel.app/queue`, which maps to `/api/queue` automatically |
 | `IMAGE_STALL_TIMEOUT_MINUTES` | `40` | flags an unusually long queue wait or render runtime separately; render time starts only when a worker claims the task (independent of the task-queue lease/reclaim mechanism) |
+| `SUPABASE_SERVICE_KEY` | *(unset)* | server-only service-role key used to promote completed hero candidates from temporary queue artifacts into durable Storage; never sent to the browser |
+| `STORAGE_BUCKET` | `linkedin` | public Storage bucket for character heroes and candidates |
 
 **Database location is configuration.** Point `DATABASE_URL`/`DB_SCHEMA` at
 a different project or schema and restart; the app creates the schema and
@@ -185,8 +187,9 @@ with the image in a public Supabase Storage bucket. Image tasks carry a
 snapshot of that data, allowing any enrolled worker to download/cache the
 same hero instead of requiring a matching local forge workspace.
 Copy a mascot in once, and again whenever it changes, from the machine that
-has `character-forge-v2` (the service key stays on that machine; the
-backend never needs it):
+has `character-forge-v2`. The hosted backend also needs the service key once
+Character Studio candidate generation is enabled, solely to copy temporary
+queue artifacts into this same durable bucket:
 
 ```bash
 cd backend
@@ -232,6 +235,8 @@ Environment (Production and Preview; never the browser):
 | `TASK_QUEUE_API_KEY` | this app's raw service key |
 | `AUTH_ENABLED` | `true` |
 | `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY` | the shared Supabase project |
+| `SUPABASE_SERVICE_KEY` | server-only service-role key for durable hero-candidate promotion |
+| `STORAGE_BUCKET` | `linkedin` |
 | `AUTH_ALLOWED_EMAILS` | who may sign in (comma list) |
 | `AUTO_INIT_DB` | `false` -- no schema checks on every cold start |
 
