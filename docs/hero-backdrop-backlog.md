@@ -13,13 +13,16 @@ branch, tests and review.
 - [x] Send that locked-character snapshot with post-image tasks.
 - [x] Let workers download/cache the remote hero and render without a local
   `workspace/<character>/hero.png`.
+- [x] Add a stateless Character Forge command and
+  `hero_candidate_generation` worker contract for one candidate per queue
+  task, with artifact and generation metadata returned on completion.
 
 ## Next product slices
 
-- [ ] Add `hero_candidate_generation` queue tasks, initially one task per
-  candidate for isolated retry and progress.
 - [ ] Add generation-run and hero-candidate tables with durable Storage
-  promotion rather than treating temporary queue artifacts as brand assets.
+  promotion rather than treating temporary queue artifacts as brand assets;
+  this is also where the LinkedIn producer will begin submitting the new
+  task type.
 - [ ] Add Character Studio APIs for create, generation status, candidate
   review and transactional hero locking.
 - [ ] Add the Character Studio UI.
