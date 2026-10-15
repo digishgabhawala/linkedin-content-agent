@@ -21,6 +21,13 @@ locked must change what that post renders with), pillar-weight sums per
 category, and the trailing-metadata/quote-stripping regexes. Uses an
 in-memory SQLite fixture, independent of the real app database.
 
+It also covers the Character Studio API without a GPU or external services:
+CharacterCard validation, one queue task per candidate, polling and durable
+Storage promotion, retryable promotion failures, candidate-to-character
+association checks, and transactional/idempotent hero locking. Queue and
+Storage HTTP calls are mocked; no real image is claimed to have been generated
+by these tests.
+
 **What automated tests deliberately do NOT cover**: `clarify_turn`,
 `generate_draft`/`regenerate_draft`, `score_post`, `infer_category`,
 `derive_scene` -- every one of these is a live Ollama call, and the actual

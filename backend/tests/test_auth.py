@@ -136,7 +136,9 @@ def test_every_other_route_requires_login(api, supabase):
     for route in app.routes:
         if not isinstance(route, APIRoute) or route.path in PUBLIC:
             continue
-        path = route.path.replace("{post_id}", "x").replace("{name}", "x")
+        path = route.path
+        for parameter in ("post_id", "name", "character_id", "run_id", "candidate_id"):
+            path = path.replace(f"{{{parameter}}}", "x")
         for method in route.methods:
             resp = api.request(method, path)
             assert resp.status_code == 401, f"{method} {route.path} answered {resp.status_code}"

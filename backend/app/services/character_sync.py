@@ -61,6 +61,7 @@ def sync_character(db: Session, http: httpx.Client, supabase_url: str, service_k
     if row.hero_asset_id != hero_asset_id:
         row.hero_version = (row.hero_version or 0) + 1
     row.hero_asset_id = hero_asset_id
+    row.hero_candidate_id = None  # this hero came from the forge workspace, not a candidate row
     row.hero_image_url = (f"{base}/storage/v1/object/public/{bucket}/{object_path}"
                           f"?v={hero_asset_id.removeprefix('sha256:')[:16]}")
     row.updated_at = now.replace(tzinfo=None)  # naive UTC, like every DB column

@@ -1,19 +1,30 @@
 from __future__ import annotations
 
 import json
+import secrets
 from datetime import datetime, timezone
 from typing import Literal
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, model_validator
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ..auth import AuthUser, current_user, public_auth_config
 from ..config import settings
 from ..db.database import get_db
-from ..db.models import Post, PostDraft, SceneAsset
+from ..db.models import (
+    Character,
+    HeroCandidate,
+    HeroGenerationRun,
+    Post,
+    PostDraft,
+    SceneAsset,
+)
 from ..services import feedback_service as fs
+from ..services import hero_generation as hgs
 from ..services import image_service as isvc
 from ..services import post_service as ps
 from ..services import steps
@@ -86,6 +97,40 @@ class FeedbackRequest(BaseModel):
 
 
 class GenerateImageRequest(BaseModel):
+    profile: Literal["full", "lightning"] = "full"
+
+
+class SignatureAttributeRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    prompt_phrase: str = Field(min_length=1, max_length=300)
+    color_hex: str | None = Field(
+        None, pattern=r"^#[0-9A-Fa-f]{6}$")
+
+
+class CharacterCardRequest(BaseModel):
+    character_id: str = Field(
+        pattern=r"^[a-z][a-z0-9_-]{1,63}$")
+    trigger_token: str | None = Field(None, max_length=100)
+    display_name: str = Field("", max_length=100)
+    style_tag: str = Field("flat vector cartoon mascot", min_length=1, max_length=300)
+    species_or_type: str = Field("human", min_length=1, max_length=100)
+    base_description: str = Field(min_length=1, max_length=1000)
+    signature_attributes: list[SignatureAttributeRequest] = Field(
+        default_factory=list, max_length=3)
+    personality: str = Field("", max_length=1000)
+    negative_traits: str = Field("", max_length=1000)
+    notes: str = Field("", max_length=2000)
+
+    @model_validator(mode="after")
+    def default_trigger_token(self):
+        if not self.trigger_token:
+            self.trigger_token = self.character_id
+        return self
+
+
+class HeroGenerationRequest(BaseModel):
+    candidate_count: int = Field(4, ge=1, le=hgs.MAX_CANDIDATES_PER_RUN)
+    base_seed: int | None = Field(None, ge=0)
     profile: Literal["full", "lightning"] = "full"
 
 
@@ -222,6 +267,65 @@ def _serialize_scene_asset(asset: SceneAsset) -> dict:
     }
 
 
+def _json_object(value: str | None) -> dict:
+    try:
+        parsed = json.loads(value or "{}")
+    except (TypeError, json.JSONDecodeError):
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def _serialize_character(character: Character) -> dict:
+    return {
+        "character_id": character.character_id,
+        "display_name": character.display_name,
+        "personality": character.personality,
+        "character_card": _json_object(character.card_json),
+        "hero_asset_id": character.hero_asset_id,
+        "hero_candidate_id": character.hero_candidate_id,
+        "hero_version": character.hero_version,
+        "hero_image_url": character.hero_image_url,
+        "updated_at": _utc_iso(character.updated_at),
+    }
+
+
+def _serialize_hero_candidate(candidate: HeroCandidate,
+                              character: Character | None = None) -> dict:
+    return {
+        "id": candidate.id,
+        "task_id": candidate.task_id,
+        "seed": candidate.seed,
+        "status": candidate.status,
+        "image_url": candidate.image_url,
+        "asset_id": candidate.asset_id,
+        "metadata": _json_object(candidate.metadata_json),
+        "error": candidate.error,
+        "selected_at": _utc_iso(candidate.selected_at),
+        "is_active_hero": bool(
+            character and (
+                character.hero_candidate_id == candidate.id
+                or (not character.hero_candidate_id and candidate.asset_id
+                    and character.hero_asset_id == candidate.asset_id))),
+        "created_at": _utc_iso(candidate.created_at),
+        "updated_at": _utc_iso(candidate.updated_at),
+    }
+
+
+def _serialize_hero_run(run: HeroGenerationRun) -> dict:
+    return {
+        "id": run.id,
+        "character_id": run.character_id,
+        "status": run.status,
+        "profile": run.profile,
+        "base_seed": run.base_seed,
+        "requested_candidates": run.requested_candidates,
+        "candidates": [_serialize_hero_candidate(candidate, run.character)
+                       for candidate in run.candidates],
+        "created_at": _utc_iso(run.created_at),
+        "updated_at": _utc_iso(run.updated_at),
+    }
+
+
 # --------------------------------------------------------------------------
 # routes
 # --------------------------------------------------------------------------
@@ -249,6 +353,97 @@ async def get_image_readiness(client: httpx.AsyncClient = Depends(get_http_clien
 @router.get("/resources/renderer-status")
 async def get_renderer_status(client: httpx.AsyncClient = Depends(get_http_client)):
     return await hosted_renderer_status(client)
+
+
+@router.post("/characters", status_code=201)
+def create_character(req: CharacterCardRequest,
+                     db: Session = Depends(get_db),
+                     user: AuthUser = Depends(current_user)):
+    if db.get(Character, req.character_id) is not None:
+        raise HTTPException(409, f"character {req.character_id!r} already exists")
+    card = req.model_dump()
+    character = Character(
+        character_id=req.character_id,
+        owner_id=user.id,
+        display_name=req.display_name or None,
+        personality=req.personality or None,
+        card_json=json.dumps(card, separators=(",", ":"), sort_keys=True),
+    )
+    db.add(character)
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(409, f"character {req.character_id!r} already exists") from exc
+    db.refresh(character)
+    return _serialize_character(character)
+
+
+@router.get("/characters")
+def list_characters(db: Session = Depends(get_db)):
+    characters = db.scalars(
+        select(Character).order_by(Character.character_id)).all()
+    return [_serialize_character(character) for character in characters]
+
+
+@router.get("/characters/{character_id}")
+def get_character(character_id: str, db: Session = Depends(get_db)):
+    character = db.get(Character, character_id)
+    if character is None:
+        raise HTTPException(404, f"character {character_id!r} not found")
+    return _serialize_character(character)
+
+
+@router.post("/characters/{character_id}/hero-generations", status_code=202)
+async def start_hero_generation(
+        character_id: str, req: HeroGenerationRequest,
+        db: Session = Depends(get_db),
+        client: httpx.AsyncClient = Depends(get_http_client)):
+    if db.get(Character, character_id) is None:
+        raise HTTPException(404, f"character {character_id!r} not found")
+    seed = req.base_seed if req.base_seed is not None else secrets.randbelow(900_000) + 100_000
+    try:
+        run = await hgs.start_generation(
+            db, client, character_id, req.candidate_count, seed, req.profile)
+    except hgs.HeroGenerationError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return _serialize_hero_run(run)
+
+
+@router.get("/characters/{character_id}/hero-generations")
+def list_hero_generations(character_id: str, db: Session = Depends(get_db)):
+    if db.get(Character, character_id) is None:
+        raise HTTPException(404, f"character {character_id!r} not found")
+    runs = db.scalars(
+        select(HeroGenerationRun)
+        .where(HeroGenerationRun.character_id == character_id)
+        .order_by(HeroGenerationRun.created_at.desc())).all()
+    return [_serialize_hero_run(run) for run in runs]
+
+
+@router.get("/characters/{character_id}/hero-generations/{run_id}")
+async def get_hero_generation(
+        character_id: str, run_id: str,
+        db: Session = Depends(get_db),
+        client: httpx.AsyncClient = Depends(get_http_client)):
+    run = db.get(HeroGenerationRun, run_id)
+    if run is None or run.character_id != character_id:
+        raise HTTPException(404, f"hero generation {run_id!r} not found")
+    run = await hgs.advance_generation(db, client, run)
+    return _serialize_hero_run(run)
+
+
+@router.post("/characters/{character_id}/hero-candidates/{candidate_id}/lock")
+def lock_hero_candidate(character_id: str, candidate_id: str,
+                        db: Session = Depends(get_db)):
+    try:
+        character, candidate = hgs.lock_candidate(db, character_id, candidate_id)
+    except hgs.HeroGenerationNotFound as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except hgs.HeroCandidateNotReady as exc:
+        raise HTTPException(409, str(exc)) from exc
+    return {"character": _serialize_character(character),
+            "candidate": _serialize_hero_candidate(candidate, character)}
 
 
 @router.post("/posts")

@@ -48,10 +48,14 @@ def test_init_db_adds_columns_missing_from_an_old_table(tmp_path):
                           "brief TEXT, status VARCHAR, draft_version INTEGER)"))
         conn.execute(text("CREATE TABLE characters (character_id VARCHAR PRIMARY KEY, "
                           "display_name VARCHAR, hero_image_url VARCHAR, updated_at DATETIME)"))
+        conn.execute(text("CREATE TABLE hero_candidates (id VARCHAR PRIMARY KEY)"))
     init_db(engine, "linkedin")
     columns = {c["name"] for c in inspect(engine).get_columns("posts")}
     assert {"image_profile", "image_task_id", "recalibration_count"} <= columns
     character_columns = {c["name"] for c in inspect(engine).get_columns("characters")}
-    assert {"card_json", "hero_asset_id", "hero_version"} <= character_columns
+    assert {"card_json", "hero_asset_id", "hero_version",
+            "hero_candidate_id"} <= character_columns
+    candidate_columns = {c["name"] for c in inspect(engine).get_columns("hero_candidates")}
+    assert "selected_at" in candidate_columns
     assert {"post_drafts", "scene_assets", "feedback", "hero_generation_runs",
             "hero_candidates"} <= set(inspect(engine).get_table_names())
