@@ -5,6 +5,10 @@ import type {
   SceneAsset,
   ImageReadiness,
   RendererStatus,
+  Character,
+  CharacterCardInput,
+  HeroGenerationRun,
+  LockHeroCandidateResult,
 } from './types'
 import { API_BASE, getAccessToken, notifyUnauthorized } from './auth'
 
@@ -86,4 +90,40 @@ export const api = {
 
   deleteSceneAsset: (name: string) =>
     req<{ status: string }>(`/scene-assets/${name}`, { method: 'DELETE' }),
+
+  createCharacter: (character: CharacterCardInput) =>
+    req<Character>('/characters', {
+      method: 'POST',
+      body: JSON.stringify(character),
+    }),
+
+  listCharacters: () => req<Character[]>('/characters'),
+
+  getCharacter: (characterId: string) =>
+    req<Character>(`/characters/${encodeURIComponent(characterId)}`),
+
+  startHeroGeneration: (
+    characterId: string,
+    request: { candidate_count: number; base_seed?: number; profile: 'full' | 'lightning' },
+  ) =>
+    req<HeroGenerationRun>(
+      `/characters/${encodeURIComponent(characterId)}/hero-generations`,
+      { method: 'POST', body: JSON.stringify(request) },
+    ),
+
+  listHeroGenerations: (characterId: string) =>
+    req<HeroGenerationRun[]>(
+      `/characters/${encodeURIComponent(characterId)}/hero-generations`,
+    ),
+
+  getHeroGeneration: (characterId: string, runId: string) =>
+    req<HeroGenerationRun>(
+      `/characters/${encodeURIComponent(characterId)}/hero-generations/${encodeURIComponent(runId)}`,
+    ),
+
+  lockHeroCandidate: (characterId: string, candidateId: string) =>
+    req<LockHeroCandidateResult>(
+      `/characters/${encodeURIComponent(characterId)}/hero-candidates/${encodeURIComponent(candidateId)}/lock`,
+      { method: 'POST' },
+    ),
 }

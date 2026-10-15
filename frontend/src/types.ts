@@ -130,3 +130,96 @@ export interface ActiveStep {
     progress_message: string | null
   } | null
 }
+
+export interface SignatureAttribute {
+  name: string
+  prompt_phrase: string
+  color_hex: string | null
+}
+
+export interface CharacterCard {
+  character_id: string
+  trigger_token: string
+  display_name: string
+  style_tag: string
+  species_or_type: string
+  base_description: string
+  signature_attributes: SignatureAttribute[]
+  personality: string
+  negative_traits: string
+  notes: string
+}
+
+export interface Character {
+  character_id: string
+  display_name: string | null
+  personality: string | null
+  character_card: CharacterCard
+  hero_asset_id: string | null
+  hero_candidate_id: string | null
+  hero_version: number
+  hero_image_url: string | null
+  updated_at: string | null
+}
+
+export type HeroCandidateStatus =
+  | 'pending'
+  | 'queued'
+  | 'claimed'
+  | 'promotion_failed'
+  | 'ready'
+  | 'failed'
+  | string
+
+export interface HeroCandidate {
+  id: string
+  task_id: string | null
+  seed: number
+  status: HeroCandidateStatus
+  image_url: string | null
+  asset_id: string | null
+  metadata: Record<string, unknown>
+  error: string | null
+  selected_at: string | null
+  is_active_hero: boolean
+  created_at: string | null
+  updated_at: string | null
+}
+
+export type HeroGenerationStatus =
+  | 'submitting'
+  | 'running'
+  | 'completed'
+  | 'partial_failed'
+  | 'failed'
+  | string
+
+export interface HeroGenerationRun {
+  id: string
+  character_id: string
+  status: HeroGenerationStatus
+  profile: 'full' | 'lightning'
+  base_seed: number
+  requested_candidates: number
+  candidates: HeroCandidate[]
+  created_at: string | null
+  updated_at: string | null
+}
+
+export interface CharacterCardInput {
+  character_id: string
+  trigger_token?: string
+  display_name: string
+  style_tag: string
+  species_or_type: string
+  base_description: string
+  signature_attributes: SignatureAttribute[]
+  personality: string
+  negative_traits: string
+  notes: string
+}
+
+export interface LockHeroCandidateResult {
+  character: Character
+  candidate: HeroCandidate
+}
