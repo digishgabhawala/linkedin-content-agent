@@ -7,6 +7,7 @@ called over plain HTTP, the same no-SDK convention as task-queue's storage.py.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 from datetime import datetime, timezone
 from pathlib import Path
@@ -29,6 +30,10 @@ def sync_character(db: Session, http: httpx.Client, supabase_url: str, service_k
         if not path.is_file():
             raise SyncError(f"missing {path}")
     card = json.loads(card_path.read_text())
+    if not isinstance(card, dict):
+        raise SyncError(f"invalid character card at {card_path}")
+    hero_bytes = hero_path.read_bytes()
+    hero_asset_id = f"sha256:{hashlib.sha256(hero_bytes).hexdigest()}"
     auth = {"Authorization": f"Bearer {service_key}", "apikey": service_key}
     base = supabase_url.rstrip("/")
 
@@ -42,7 +47,7 @@ def sync_character(db: Session, http: httpx.Client, supabase_url: str, service_k
     object_path = f"characters/{character_id}/hero.png"
     resp = http.post(f"{base}/storage/v1/object/{bucket}/{object_path}",
                      headers={**auth, "Content-Type": "image/png", "x-upsert": "true"},
-                     content=hero_path.read_bytes())
+                     content=hero_bytes)
     if resp.status_code != 200:
         raise SyncError(f"uploading hero.png failed: {resp.status_code} {resp.text}")
 
@@ -52,8 +57,12 @@ def sync_character(db: Session, http: httpx.Client, supabase_url: str, service_k
     row = db.get(Character, character_id) or Character(character_id=character_id)
     row.display_name = card.get("display_name")
     row.personality = card.get("personality")
+    row.card_json = json.dumps(card, separators=(",", ":"), sort_keys=True)
+    if row.hero_asset_id != hero_asset_id:
+        row.hero_version = (row.hero_version or 0) + 1
+    row.hero_asset_id = hero_asset_id
     row.hero_image_url = (f"{base}/storage/v1/object/public/{bucket}/{object_path}"
-                          f"?v={int(now.timestamp())}")
+                          f"?v={hero_asset_id.removeprefix('sha256:')[:16]}")
     row.updated_at = now.replace(tzinfo=None)  # naive UTC, like every DB column
     db.add(row)
     db.commit()

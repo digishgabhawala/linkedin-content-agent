@@ -1,0 +1,42 @@
+# Hero and recurring-backdrop backlog
+
+This backlog keeps follow-up ideas from expanding the current vertical
+slice. Items move into implementation one at a time, each with its own
+branch, tests and review.
+
+## Current slice
+
+- [x] Let Character Forge accept explicit hero/card/output paths while
+  preserving its local workspace defaults.
+- [x] Store the complete CharacterCard, content-addressed hero asset id and
+  hero version with the synced remote character.
+- [x] Send that locked-character snapshot with post-image tasks.
+- [x] Let workers download/cache the remote hero and render without a local
+  `workspace/<character>/hero.png`.
+
+## Next product slices
+
+- [ ] Add `hero_candidate_generation` queue tasks, initially one task per
+  candidate for isolated retry and progress.
+- [ ] Add generation-run and hero-candidate tables with durable Storage
+  promotion rather than treating temporary queue artifacts as brand assets.
+- [ ] Add Character Studio APIs for create, generation status, candidate
+  review and transactional hero locking.
+- [ ] Add the Character Studio UI.
+- [ ] Scope characters, posts and recurring backdrops by authenticated owner.
+- [ ] Version backdrop descriptions so an old post can remain reproducible
+  while still offering an explicit "use latest backdrop" action.
+- [ ] Evaluate reference-image-backed recurring environments after the
+  current text-backed backdrop system has enough real usage data.
+
+## End-of-initiative hardening
+
+- [ ] Move character images from public URLs to private objects with short
+  signed URLs when multi-user access is enabled.
+- [ ] Define hero-cache size limits, eviction and integrity verification.
+- [ ] Add per-asset cache locking if a worker later processes concurrent
+  tasks; today's worker intentionally runs one task at a time.
+- [ ] Restrict worker downloads to trusted Storage origins before arbitrary
+  third-party producers can submit tasks.
+- [ ] Decide archival/cleanup rules for superseded hero versions and post
+  renders.

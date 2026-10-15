@@ -10,7 +10,7 @@ from sqlalchemy.orm import sessionmaker
 from app.agents.taxonomy import GATE_PILLARS, OPTIMIZATION_PILLARS
 from app.config import settings
 from app.db.database import Base
-from app.db.models import Post, PostDraft
+from app.db.models import Character, Post, PostDraft
 from app.services import steps
 from app.services.steps import Next, Wait, decide_next
 
@@ -243,6 +243,27 @@ def test_lock_and_image_steps(db):
     q.finish(result={"image_artifact_id": "a1"})
     post = _run(steps.advance(db, q, post))
     assert post.status == "image_ready" and post.final_image_path == "https://storage/img.png"
+
+
+def test_image_task_carries_remote_locked_hero_snapshot(db):
+    q = FakeQueue()
+    card = {"character_id": "remote_dev", "trigger_token": "remote_dev",
+            "display_name": "Remote Dev"}
+    db.add(Character(character_id="remote_dev", card_json=json.dumps(card),
+                     hero_asset_id="sha256:abc", hero_version=3,
+                     hero_image_url="https://storage.example/hero.png"))
+    post = Post(character_id="remote_dev", brief="b", status="locked", post_text="p",
+                scene_instruction="waving", seed=3, clarify_transcript="[]")
+    db.add(post)
+    db.commit()
+
+    _run(steps.start_image(db, q, post.id, "full"))
+
+    payload = q.latest()["payload"]
+    assert payload["hero_image_url"] == "https://storage.example/hero.png"
+    assert payload["hero_asset_id"] == "sha256:abc"
+    assert payload["hero_version"] == 3
+    assert payload["character_card"] == card
 
 
 def test_failed_image_keeps_image_failure_fields(db):

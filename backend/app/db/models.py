@@ -81,7 +81,15 @@ class Character(Base):
     owner_id = Column(String, nullable=True)
     display_name = Column(String, nullable=True)
     personality = Column(Text, nullable=True)
-    hero_image_url = Column(String, nullable=True)  # public Storage URL, ?v=<sync time>
+    # Complete provider-neutral CharacterCard JSON. Workers receive a
+    # snapshot with each render, so they do not need this app's database or a
+    # matching character-forge workspace checkout.
+    card_json = Column(Text, nullable=True)
+    # Content-addressed identity of the selected hero. The URL is only a
+    # locator and may change; workers cache by asset id + version.
+    hero_asset_id = Column(String, nullable=True)
+    hero_version = Column(Integer, nullable=False, default=0)
+    hero_image_url = Column(String, nullable=True)  # public Storage URL, ?v=<content hash>
     updated_at = Column(DateTime, nullable=False, default=datetime.utcnow)
 
 
