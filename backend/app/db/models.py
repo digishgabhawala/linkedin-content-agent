@@ -99,6 +99,10 @@ class Character(Base):
     hero_asset_id = Column(String, nullable=True)
     hero_version = Column(Integer, nullable=False, default=0)
     hero_image_url = Column(String, nullable=True)  # public Storage URL, ?v=<content hash>
+    # Exact selected candidate, kept separate from asset identity because two
+    # seeds can legitimately produce byte-identical images. Null for legacy
+    # heroes imported directly from a Character Forge workspace.
+    hero_candidate_id = Column(String, nullable=True)
     updated_at = Column(DateTime, nullable=False, default=datetime.utcnow)
 
 
@@ -143,6 +147,7 @@ class HeroCandidate(Base):
     image_url = Column(String, nullable=True)
     metadata_json = Column(Text, nullable=True)
     error = Column(Text, nullable=True)
+    selected_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at = Column(DateTime, nullable=False, default=datetime.utcnow,
                         onupdate=datetime.utcnow)

@@ -13,8 +13,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+from datetime import datetime
 
 import httpx
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..config import settings
@@ -27,6 +29,14 @@ MAX_CANDIDATES_PER_RUN = 12
 
 
 class HeroGenerationError(Exception):
+    pass
+
+
+class HeroGenerationNotFound(HeroGenerationError):
+    pass
+
+
+class HeroCandidateNotReady(HeroGenerationError):
     pass
 
 
@@ -209,3 +219,47 @@ async def advance_generation(db: Session, client: httpx.AsyncClient,
     db.commit()
     db.refresh(run)
     return run
+
+
+def lock_candidate(db: Session, character_id: str,
+                   candidate_id: str) -> tuple[Character, HeroCandidate]:
+    """Atomically make a ready candidate the character's locked reference.
+
+    The CharacterCard snapshot used to generate the candidate moves with the
+    image, preventing a later edit from pairing an old candidate with a
+    different identity prompt. Re-locking the active candidate is idempotent.
+    """
+    character = db.execute(
+        select(Character).where(Character.character_id == character_id)
+        .with_for_update()).scalar_one_or_none()
+    if character is None:
+        raise HeroGenerationNotFound(f"character {character_id!r} not found")
+    candidate = db.execute(
+        select(HeroCandidate)
+        .join(HeroGenerationRun)
+        .where(HeroCandidate.id == candidate_id,
+               HeroGenerationRun.character_id == character_id)
+        .with_for_update()).scalar_one_or_none()
+    if candidate is None:
+        raise HeroGenerationNotFound(
+            f"hero candidate {candidate_id!r} not found for character {character_id!r}")
+    if (candidate.status != "ready" or not candidate.asset_id
+            or not candidate.image_url):
+        raise HeroCandidateNotReady(
+            f"hero candidate {candidate_id!r} is not ready to lock")
+
+    if character.hero_asset_id != candidate.asset_id:
+        character.hero_version = (character.hero_version or 0) + 1
+    character.hero_asset_id = candidate.asset_id
+    character.hero_image_url = candidate.image_url
+    character.hero_candidate_id = candidate.id
+    character.card_json = candidate.run.card_json
+    card = json.loads(candidate.run.card_json)
+    character.display_name = card.get("display_name")
+    character.personality = card.get("personality")
+    character.updated_at = datetime.utcnow()
+    candidate.selected_at = candidate.selected_at or datetime.utcnow()
+    db.commit()
+    db.refresh(character)
+    db.refresh(candidate)
+    return character, candidate

@@ -131,6 +131,27 @@ npm run dev
 Open `http://localhost:11001/linkedin/` and start with a brief. The API lives
 under `/api/linkedin/` (the same paths as on the shared domain).
 
+### Character Studio API
+
+The backend exposes the hero workflow independently of the UI. All routes
+below use the existing Supabase bearer authentication when authentication is
+enabled:
+
+| Method | Path | Purpose |
+|---|---|---|
+| `POST` | `/api/linkedin/characters` | Create a durable CharacterCard record |
+| `GET` | `/api/linkedin/characters` | List characters and their active heroes |
+| `GET` | `/api/linkedin/characters/{character_id}` | Read one character |
+| `POST` | `/api/linkedin/characters/{character_id}/hero-generations` | Start 1-12 independently queued candidates |
+| `GET` | `/api/linkedin/characters/{character_id}/hero-generations` | List the character's generation runs |
+| `GET` | `/api/linkedin/characters/{character_id}/hero-generations/{run_id}` | Poll queue progress and promote completed candidates |
+| `POST` | `/api/linkedin/characters/{character_id}/hero-candidates/{candidate_id}/lock` | Atomically make a ready candidate the locked hero |
+
+Locking a candidate updates the image, content identity, version, and exact
+CharacterCard snapshot together. Re-locking the same candidate is idempotent;
+choosing another candidate creates the next hero version. The Character
+Studio frontend is intentionally a separate backlog slice.
+
 ## Development
 
 ```bash

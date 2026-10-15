@@ -18,11 +18,11 @@ branch, tests and review.
   task, with artifact and generation metadata returned on completion.
 - [x] Add generation-run and hero-candidate tables, submit one task per
   candidate, and promote completed queue artifacts into durable Storage.
+- [x] Add authenticated Character Studio APIs for create, generation status,
+  candidate review and transactional hero locking.
 
 ## Next product slices
 
-- [ ] Add Character Studio APIs for create, generation status, candidate
-  review and transactional hero locking.
 - [ ] Add the Character Studio UI.
 - [ ] Scope characters, posts and recurring backdrops by authenticated owner.
 - [ ] Version backdrop descriptions so an old post can remain reproducible
