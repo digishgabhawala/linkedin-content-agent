@@ -121,13 +121,28 @@ async def start_generation(db: Session, client: httpx.AsyncClient,
     return run
 
 
-async def _promote_artifact(client: httpx.AsyncClient, run: HeroGenerationRun,
-                            candidate: HeroCandidate,
+def storage_client() -> httpx.AsyncClient:
+    """A plain client for Supabase Storage. Never the task-queue client: that
+    one carries this app's queue key (X-API-Key) on every request."""
+    return httpx.AsyncClient(timeout=60)
+
+
+class ArtifactExpired(HeroGenerationError):
+    """The queue's temporary copy is gone (finite retention); retrying the
+    promotion can never succeed, so the candidate fails for good."""
+
+
+async def _promote_artifact(storage: httpx.AsyncClient,
+                            storage_auth: tuple[str, str] | None,
+                            run: HeroGenerationRun, candidate: HeroCandidate,
                             artifact_url: str) -> tuple[str, str, str]:
-    if not settings.supabase_url or not settings.supabase_service_key:
+    if not settings.supabase_url or storage_auth is None:
         raise HeroGenerationError(
-            "SUPABASE_URL and SUPABASE_SERVICE_KEY are required to promote hero candidates")
-    response = await client.get(artifact_url, timeout=60)
+            "no Storage credential to promote hero candidates (sign in, or set "
+            "SUPABASE_URL and SUPABASE_SERVICE_KEY for local development)")
+    response = await storage.get(artifact_url, timeout=60)
+    if response.status_code in (400, 404):  # Storage reports a missing object as either
+        raise ArtifactExpired("the queue's copy of this candidate image has expired")
     response.raise_for_status()
     image = response.content
     if not image:
@@ -137,10 +152,10 @@ async def _promote_artifact(client: httpx.AsyncClient, run: HeroGenerationRun,
     storage_path = (
         f"characters/{run.character_id}/candidates/{candidate.id}.png")
     base = settings.supabase_url.rstrip("/")
-    key = settings.supabase_service_key
-    upload = await client.post(
+    bearer, apikey = storage_auth
+    upload = await storage.post(
         f"{base}/storage/v1/object/{settings.storage_bucket}/{storage_path}",
-        headers={"Authorization": f"Bearer {key}", "apikey": key,
+        headers={"Authorization": f"Bearer {bearer}", "apikey": apikey,
                  "Content-Type": "image/png", "x-upsert": "true"},
         content=image,
         timeout=60,
@@ -155,8 +170,14 @@ async def _promote_artifact(client: httpx.AsyncClient, run: HeroGenerationRun,
 
 
 async def advance_generation(db: Session, client: httpx.AsyncClient,
-                             run: HeroGenerationRun) -> HeroGenerationRun:
-    """Poll unfinished tasks and durably promote every completed image."""
+                             run: HeroGenerationRun, *,
+                             storage_auth: tuple[str, str] | None,
+                             storage_client: httpx.AsyncClient) -> HeroGenerationRun:
+    """Poll unfinished tasks and durably promote every completed image.
+
+    ``client`` talks to the task-queue; ``storage_client`` to Supabase Storage
+    with ``storage_auth`` = (bearer token, apikey) -- the signed-in user's
+    session when login is on, so the hosted app needs no service key."""
     for candidate in run.candidates:
         if candidate.status in TERMINAL_CANDIDATE_STATUSES or not candidate.task_id:
             continue
@@ -195,9 +216,18 @@ async def advance_generation(db: Session, client: httpx.AsyncClient,
             continue
 
         try:
-            artifact = await llm_client.get_artifact(client, artifact_id)
+            try:
+                artifact = await llm_client.get_artifact(client, artifact_id)
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code == 404:
+                    raise ArtifactExpired("the queue no longer has this candidate image") from exc
+                raise
             asset_id, storage_path, image_url = await _promote_artifact(
-                client, run, candidate, artifact["url"])
+                storage_client, storage_auth, run, candidate, artifact["url"])
+        except ArtifactExpired as exc:
+            candidate.status = "failed"
+            candidate.error = f"expired: {exc}; generate new candidates"
+            continue
         except Exception as exc:  # noqa: BLE001 -- persisted and retried on the next poll
             # Queue results live for 48 hours, so a missing credential or
             # transient Storage outage should remain retryable. A later poll

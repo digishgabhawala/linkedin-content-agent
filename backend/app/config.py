@@ -52,8 +52,10 @@ class Settings(BaseSettings):
     auth_enabled: bool = False
     supabase_url: str = ""
     supabase_publishable_key: str = ""  # browser-safe; also verifies tokens
-    # Server-only credential used to promote temporary queue artifacts into
-    # durable character assets. Never expose this value to the frontend.
+    # LOCAL DEVELOPMENT ONLY (login off): lets hero candidates be copied into
+    # Storage without a signed-in user. Hosted, uploads use the user's own
+    # session (Storage policy in scripts/init_db.py) and this stays unset --
+    # it bypasses every Supabase protection. Never expose it to the frontend.
     supabase_service_key: str = ""
     storage_bucket: str = "linkedin"
     auth_allowed_emails: str = ""  # comma list, case-insensitive
