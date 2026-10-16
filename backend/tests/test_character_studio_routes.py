@@ -1,7 +1,10 @@
 import httpx
 import pytest
 
+from app.api import routes
+from app.auth import AuthUser
 from app.config import settings
+from app.services import hero_generation
 from tests.test_steps import FakeQueue
 
 API = "/api/linkedin"
@@ -47,13 +50,42 @@ def _create(api):
     return response.json()
 
 
+class _StorageContext:
+    """hero_generation.storage_client() stand-in: Storage calls are recorded
+    by the same fake, but arrive through the separate Storage client."""
+
+    def __init__(self, fake):
+        self.fake = fake
+
+    async def __aenter__(self):
+        return self.fake
+
+    async def __aexit__(self, *exc):
+        return False
+
+
 def _studio_queue(api, monkeypatch):
     queue = StudioQueue()
     api.queue = queue
     monkeypatch.setattr(settings, "supabase_url", "https://project.supabase.co")
     monkeypatch.setattr(settings, "supabase_service_key", "service-secret")
     monkeypatch.setattr(settings, "storage_bucket", "linkedin")
+    monkeypatch.setattr(hero_generation, "storage_client", lambda: _StorageContext(queue))
     return queue
+
+
+def test_storage_uploads_use_the_signed_in_users_session_when_login_is_on(monkeypatch):
+    user = AuthUser(id="u1", email="a@b.c", access_token="user-jwt")
+    monkeypatch.setattr(settings, "supabase_publishable_key", "publishable")
+    monkeypatch.setattr(settings, "supabase_service_key", "service-secret")
+    monkeypatch.setattr(settings, "auth_enabled", True)
+    # Even with a service key configured, a hosted (login on) app never uses it.
+    assert routes._storage_auth(user) == ("user-jwt", "publishable")
+    assert routes._storage_auth(AuthUser(id="u1", email="a@b.c")) is None
+    monkeypatch.setattr(settings, "auth_enabled", False)
+    assert routes._storage_auth(user) == ("service-secret", "service-secret")
+    monkeypatch.setattr(settings, "supabase_service_key", "")
+    assert routes._storage_auth(user) is None
 
 
 def test_character_create_list_and_get_api(api):

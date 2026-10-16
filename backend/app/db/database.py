@@ -62,7 +62,7 @@ _NEW_CHARACTER_COLUMNS = {
 }
 
 _NEW_HERO_CANDIDATE_COLUMNS = {
-    "selected_at": "DATETIME",
+    "selected_at": "TIMESTAMP",
 }
 
 

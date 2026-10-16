@@ -27,6 +27,10 @@ _LOCAL_USER_ID = "auth-disabled"
 class AuthUser:
     id: str
     email: str
+    # The caller's Supabase session token: lets the backend act as this user
+    # where Supabase policies allow it (e.g. Storage uploads), instead of
+    # holding a service key. None when login is disabled.
+    access_token: str | None = None
 
 
 # sha256(token) -> (user, expiry as epoch seconds)
@@ -90,7 +94,8 @@ async def current_user(
 
     payload = await _fetch_supabase_user(token)
     user = AuthUser(id=str(payload.get("id") or ""),
-                    email=str(payload.get("email") or "").strip().casefold())
+                    email=str(payload.get("email") or "").strip().casefold(),
+                    access_token=token)
     if user.email not in settings.allowed_emails:
         raise HTTPException(403, "This account does not have access to LinkedIn Content Agent")
     _cache[key] = (user, min(now + settings.auth_cache_minutes * 60, _token_expiry(token)))
