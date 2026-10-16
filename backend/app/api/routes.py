@@ -471,15 +471,32 @@ def list_hero_generations(character_id: str, db: Session = Depends(get_db)):
     return [_serialize_hero_run(run) for run in runs]
 
 
+def _storage_auth(user: AuthUser) -> tuple[str, str] | None:
+    """(bearer, apikey) for Supabase Storage uploads. Hosted (login on): the
+    signed-in user's own session, allowed by the Storage policy from
+    scripts/init_db.py -- no service key on the server. Local development
+    without login falls back to SUPABASE_SERVICE_KEY when set."""
+    if settings.auth_enabled:
+        if not user.access_token:
+            return None
+        return user.access_token, settings.supabase_publishable_key
+    if settings.supabase_service_key:
+        return settings.supabase_service_key, settings.supabase_service_key
+    return None
+
+
 @router.get("/characters/{character_id}/hero-generations/{run_id}")
 async def get_hero_generation(
         character_id: str, run_id: str,
         db: Session = Depends(get_db),
-        client: httpx.AsyncClient = Depends(get_http_client)):
+        client: httpx.AsyncClient = Depends(get_http_client),
+        user: AuthUser = Depends(current_user)):
     run = db.get(HeroGenerationRun, run_id)
     if run is None or run.character_id != character_id:
         raise HTTPException(404, f"hero generation {run_id!r} not found")
-    run = await hgs.advance_generation(db, client, run)
+    async with hgs.storage_client() as storage:
+        run = await hgs.advance_generation(
+            db, client, run, storage_auth=_storage_auth(user), storage_client=storage)
     return _serialize_hero_run(run)
 
 
