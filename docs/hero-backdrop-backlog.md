@@ -32,13 +32,19 @@ branch, tests and review.
   today recovery is a new candidate run so failure history stays visible.
 - [ ] Add archive/delete management for unused characters and generation
   runs after real usage clarifies safe retention rules.
-- [ ] Version backdrop descriptions so an old post can remain reproducible
+- [x] Version backdrop descriptions so an old post can remain reproducible
   while still offering an explicit "use latest backdrop" action.
+- [x] Promote Backdrops to a top-level library with manual creation, stable
+  IDs and editable labels, post/version usage, historical restore, reversible
+  archive, and a compact selector in the post workflow.
 - [ ] Evaluate reference-image-backed recurring environments after the
   current text-backed backdrop system has enough real usage data.
 
 ## End-of-initiative hardening
 
+- [ ] Audit and remediate the current frontend npm dependency advisories
+  (4 moderate, 9 high), then rerun lint, the production build and regression
+  checks before release.
 - [ ] Move character images from public URLs to private objects with short
   signed URLs when multi-user access is enabled.
 - [ ] Define hero-cache size limits, eviction and integrity verification.

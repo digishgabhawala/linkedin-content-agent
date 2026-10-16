@@ -67,10 +67,14 @@ loop itself isn't tied to any one voice, seniority level, or industry.
    calm confident energy"). Recurring backdrops (an office, a home desk, ...)
    get saved once as a **named asset** and referenced with a short `@name`
    token in later scenes (e.g. `@office`) instead of repeating the full
-   description -- editing an asset's text later retroactively applies to
-   every post that references it. You can edit the scene text before
-   rendering, insert an existing `@name` via the backdrop dropdown, or
-   manage the whole asset library from the sidebar panel.
+   description. Every post pins the immutable backdrop version it used, so
+   later edits do not change an old post's render; an explicit **Use latest**
+   action upgrades that post when wanted. **Backdrops** is a top-level library
+   where you can create settings, edit their human-readable labels and
+   descriptions, inspect post usage per version, restore a historical version
+   as a new one, or archive a setting without destroying history. In the post
+   flow, a compact selector chooses a saved backdrop while the raw scene prompt
+   remains available for advanced edits.
 6. Generating the image submits a task to the queue and is a real 15-40 min
    render once some worker picks it up (character-forge-v2 + ComfyUI, running
    wherever) -- the app doesn't block on it; you can leave and come back.
@@ -165,7 +169,16 @@ cd backend
 cd ../frontend
 npm run lint
 npx tsc --noEmit
+npm run test:e2e
 ```
+
+The Playwright suite starts an isolated backend and frontend on ports `11100`
+and `11101`, using a temporary SQLite database. It checks the Posts workspace
+empty and active-draft states, responsive layout, keyboard skip-link behavior,
+and the complete Backdrops lifecycle in desktop and mobile Chromium. On a new
+machine, install its browser once with `npx playwright install chromium`.
+Failure traces, screenshots, and the HTML report are written to ignored
+`test-results/` and `playwright-report/` directories.
 
 See [TESTING.md](TESTING.md) for what's covered by automated tests vs.
 verified live (most of the LLM-dependent behavior -- clarify quality,

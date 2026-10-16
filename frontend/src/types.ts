@@ -30,6 +30,10 @@ export interface Post {
   escalation_reason: string | null
   scene_instruction: string | null
   scene_asset_name: string | null
+  scene_asset_display_name: string | null
+  scene_asset_version: number | null
+  scene_asset_latest_version: number | null
+  scene_asset_is_latest: boolean
   seed: number | null
   image_url: string | null
   has_final_image: boolean
@@ -65,9 +69,30 @@ export interface PostDraft {
 
 export interface SceneAsset {
   name: string
+  display_name: string
   detail_text: string
+  current_version: number
+  archived_at: string | null
+  usage_count: number
   created_at: string | null
   updated_at: string | null
+}
+
+export interface SceneAssetUsagePost {
+  id: string
+  brief: string
+  status: PostStatus
+  updated_at: string | null
+}
+
+export interface SceneAssetVersion {
+  id: string
+  scene_asset_name: string
+  version: number
+  detail_text: string
+  usage_count: number
+  posts: SceneAssetUsagePost[]
+  created_at: string | null
 }
 
 export interface Feedback {

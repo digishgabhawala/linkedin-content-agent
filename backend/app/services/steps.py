@@ -198,9 +198,12 @@ def build(db: Session, post: Post, step: str, ctx: dict):
     if step == "scene":
         return "text", build_scene_request(post.post_text)
     if step == "image":
-        # Scene "@name" references expand at the last moment, never persisted.
+        # Scene "@name" references expand at the last moment using the exact
+        # immutable revision pinned by this post.
         return "image", {"character_id": post.character_id,
-                         "task": expand_scene_refs(db, post.scene_instruction),
+                         "task": expand_scene_refs(
+                             db, post.scene_instruction,
+                             post.scene_asset_name, post.scene_asset_version_id),
                          "seed": post.seed, "profile": ctx.get("profile", "full"),
                          **_remote_character_payload(post)}
     raise ValueError(f"unknown step {step!r}")
@@ -259,9 +262,10 @@ async def apply(db: Session, client, post: Post, step: str, result: dict, ctx: d
         return {}
     if step == "scene":
         scene = parse_scene(content)
-        setting_detail, asset_name = _resolve_scene_asset(db, scene)
+        setting_detail, asset_name, version_id = _resolve_scene_asset(db, scene)
         post.scene_instruction = _assemble_scene_text(scene, setting_detail)
         post.scene_asset_name = asset_name
+        post.scene_asset_version_id = version_id
         post.seed = random.randint(1, 999_999)
         return {}
     if step == "image":

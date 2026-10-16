@@ -44,8 +44,8 @@ export function ImageStatus({ post, onRetry, onRetryLightning }: Props) {
     const rendering = post.image_queue_status === 'claimed'
     const waiting = post.image_queue_status === 'queued'
     return (
-      <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm space-y-2">
-        <p className="text-sm font-medium text-gray-800">
+      <section className="post-panel post-panel--image-status" aria-live="polite">
+        <p className="post-image-status__heading">
           {rendering
             ? `${stageLabel(post.image_progress_stage)}${post.image_worker_id ? ` on ${post.image_worker_id}` : ''}`
             : waiting
@@ -53,85 +53,85 @@ export function ImageStatus({ post, onRetry, onRetryLightning }: Props) {
               : 'Checking whether an image worker has started…'}
         </p>
         {rendering && post.image_progress_message && (
-          <p className="text-xs text-gray-600">{post.image_progress_message}</p>
+          <p className="post-image-status__message">{post.image_progress_message}</p>
         )}
-        <p className="text-xs text-gray-500">
+        <p className="post-panel__meta">
           {rendering && post.image_claimed_at
             ? `Worker started ${elapsedLabel(post.image_claimed_at)}`
             : `Queued ${elapsedLabel(post.image_started_at)}`}
         </p>
         {rendering && (
-          <div className="h-2 overflow-hidden rounded-full bg-blue-100" aria-label="Image rendering in progress">
-            <div className="h-full w-1/3 animate-pulse rounded-full bg-blue-600" />
+          <div className="post-render-progress" aria-label="Image rendering in progress">
+            <div />
           </div>
         )}
         {waiting && (
-          <p className="rounded-lg border border-amber-100 bg-amber-50 p-2 text-xs text-amber-800">
+          <p className="post-message post-message--warning">
             {post.is_queue_delayed
               ? 'This task has been waiting longer than usual. Check that the local image worker is online.'
               : 'The task is safely stored in the hosted queue. Start the local image worker to begin rendering.'}
           </p>
         )}
         {rendering && post.is_worker_lost && (
-          <p className="rounded-lg border border-red-100 bg-red-50 p-2 text-xs text-red-800">
+          <p className="post-message post-message--danger">
             The worker rendering this image stopped reporting
             {post.image_progress_updated_at ? ` (last update ${elapsedLabel(post.image_progress_updated_at)})` : ''}.
             The task stays in the queue and will be picked up again when an image worker is running.
           </p>
         )}
         {rendering && !post.is_worker_lost && post.is_stalled && (
-          <p className="rounded-lg bg-amber-50 border border-amber-100 p-2 text-xs text-amber-800">
+          <p className="post-message post-message--warning">
             {post.image_progress_updated_at
               ? 'Rendering is taking longer than usual. The worker is still reporting in, so it is probably just slow — full-quality renders can take over an hour on a busy Mac.'
               : "Rendering is taking longer than usual. This worker doesn't report progress, so we can't confirm it is still running — check it directly."}
           </p>
         )}
-      </div>
+      </section>
     )
   }
 
   if (post.status === 'image_failed') {
     return (
-      <div className="rounded-xl border border-red-200 bg-red-50 p-6 shadow-sm space-y-3">
+      <section className="post-panel post-panel--danger" role="alert">
         {post.image_failure_kind === 'corrupt_output' ? (
           <>
-            <p className="text-sm font-medium text-red-900">The image came back blank</p>
-            <p className="text-sm text-red-800">
+            <h3 className="post-attention-heading">The image came back blank</h3>
+            <p className="post-attention-copy">
               This usually happens when the Mac is low on memory or ComfyUI has been running a
               long time. Retry renders again with a new seed.
             </p>
           </>
         ) : post.image_failure_kind === 'insufficient_memory' ? (
           <>
-            <p className="text-sm font-medium text-red-900">Not enough free memory for full quality</p>
-            <p className="text-sm text-red-800">
+            <h3 className="post-attention-heading">Not enough free memory for full quality</h3>
+            <p className="post-attention-copy">
               The image worker refused this render rather than risk a blank image. Free some
               memory and retry, or render in Lightning mode instead.
             </p>
           </>
         ) : (
-          <p className="text-sm font-medium text-red-900">Image generation failed</p>
+          <h3 className="post-attention-heading">Image generation failed</h3>
         )}
         {post.image_job_error && (
-          <pre className="whitespace-pre-wrap text-xs text-red-700">{post.image_job_error}</pre>
+          <pre className="post-error-detail">{post.image_job_error}</pre>
         )}
-        <div className="flex flex-wrap gap-2">
+        <div className="post-actions">
           {post.image_failure_kind === 'insufficient_memory' && (
             <button
               onClick={onRetryLightning}
-              className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700"
+              className="post-button post-button--primary"
             >
               Retry with Lightning
             </button>
           )}
           <button
             onClick={onRetry}
-            className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
+            className="post-button post-button--danger"
           >
             Retry
           </button>
         </div>
-      </div>
+      </section>
     )
   }
 

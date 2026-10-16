@@ -26,35 +26,38 @@ export function FeedbackForm({ onSubmit }: Props) {
   }
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm space-y-2">
-      <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+    <section className="post-panel post-panel--compact" aria-labelledby="feedback-heading">
+      <p id="feedback-heading" className="post-panel__eyebrow">
         Feedback (saved, not yet auto-applied)
       </p>
-      <div className="flex gap-2">
+      <div className="post-feedback-fields">
+        <label className="sr-only" htmlFor="feedback-stage">Feedback stage</label>
         <select
+          id="feedback-stage"
           value={stage}
           onChange={e => setStage(e.target.value)}
-          className="rounded-lg border border-gray-300 px-2 py-1.5 text-xs"
         >
           {STAGES.map(s => (
             <option key={s.value} value={s.value}>{s.label}</option>
           ))}
         </select>
+        <label className="sr-only" htmlFor="feedback-note">Feedback note</label>
         <input
-          className="flex-1 rounded-lg border border-gray-300 px-3 py-1.5 text-xs focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
+          id="feedback-note"
           placeholder="What would you change?"
           value={note}
           onChange={e => setNote(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && submit()}
         />
         <button
+          type="button"
           onClick={submit}
           disabled={!note.trim()}
-          className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+          className="post-button post-button--secondary"
         >
           {sent ? 'Saved ✓' : 'Save'}
         </button>
       </div>
-    </div>
+    </section>
   )
 }

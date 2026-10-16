@@ -13,8 +13,8 @@ from .database import build_engine, init_db
 
 # Parents before children (candidates reference runs; drafts/feedback reference posts).
 TABLES = [models.Character.__table__, models.HeroGenerationRun.__table__,
-          models.HeroCandidate.__table__, models.Post.__table__,
-          models.SceneAsset.__table__, models.PostDraft.__table__,
+          models.HeroCandidate.__table__, models.SceneAsset.__table__,
+          models.SceneAssetVersion.__table__, models.Post.__table__, models.PostDraft.__table__,
           models.Feedback.__table__]
 
 

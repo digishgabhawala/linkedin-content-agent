@@ -18,38 +18,41 @@ export function DraftHistory({ postId, currentVersion }: Props) {
   if (drafts.length <= 1) return null
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+    <section className="post-panel post-panel--compact post-disclosure-panel">
       <button
+        type="button"
         onClick={() => setOpen(o => !o)}
-        className="text-xs font-semibold uppercase tracking-wide text-gray-500"
+        className="post-disclosure-toggle"
+        aria-expanded={open}
       >
-        Draft history ({drafts.length}) {open ? '▲' : '▼'}
+        <span>Draft history <span className="post-chip">{drafts.length}</span></span>
+        <span aria-hidden="true">{open ? '−' : '+'}</span>
       </button>
       {open && (
-        <div className="mt-3 space-y-3">
+        <div className="post-disclosure-panel__body">
           {[...drafts].reverse().map(d => (
-            <div key={d.id} className="rounded-lg border border-gray-100 p-3">
-              <div className="flex items-center justify-between text-xs text-gray-500">
-                <span className="font-medium">
+            <div key={d.id} className="post-history-entry">
+              <div className="post-history-entry__heading">
+                <strong>
                   v{d.version} · {d.generated_by}
                   {d.version === currentVersion && (
-                    <span className="ml-2 rounded bg-blue-100 px-1.5 py-0.5 text-blue-700">
+                    <span className="post-chip">
                       current
                     </span>
                   )}
-                </span>
+                </strong>
                 {d.created_at && <span>{new Date(d.created_at).toLocaleTimeString()}</span>}
               </div>
               {d.user_instruction && (
-                <p className="mt-1 text-xs italic text-gray-500">"{d.user_instruction}"</p>
+                <p className="post-history-entry__instruction">“{d.user_instruction}”</p>
               )}
-              <p className="mt-1 whitespace-pre-wrap text-xs text-gray-600 line-clamp-3">
+              <span className="post-history-entry__preview">
                 {d.post_text}
-              </p>
+              </span>
             </div>
           ))}
         </div>
       )}
-    </div>
+    </section>
   )
 }

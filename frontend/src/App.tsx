@@ -14,7 +14,6 @@ import { ImageStatus } from './components/ImageStatus'
 import { PostPreview } from './components/PostPreview'
 import { FeedbackForm } from './components/FeedbackForm'
 import { HistorySidebar } from './components/HistorySidebar'
-import { SceneAssetsPanel } from './components/SceneAssetsPanel'
 import { ImageMemoryDialog } from './components/ImageMemoryDialog'
 import { JourneyProgress } from './components/JourneyProgress'
 import { RendererStatusBadge } from './components/RendererStatusBadge'
@@ -25,11 +24,21 @@ import { StepStatus } from './components/StepStatus'
 const CharacterStudio = lazy(() =>
   import('./components/CharacterStudio').then((module) => ({ default: module.CharacterStudio })),
 )
+const BackdropsPage = lazy(() =>
+  import('./components/BackdropsPage').then((module) => ({ default: module.BackdropsPage })),
+)
 
-type AppView = 'posts' | 'characters'
+type AppView = 'posts' | 'characters' | 'backdrops'
 
 function viewFromHash(): AppView {
-  return window.location.hash.startsWith('#characters') ? 'characters' : 'posts'
+  if (window.location.hash.startsWith('#characters')) return 'characters'
+  if (window.location.hash.startsWith('#backdrops')) return 'backdrops'
+  return 'posts'
+}
+
+function postIdFromHash() {
+  if (!window.location.hash.startsWith('#posts?')) return null
+  return new URLSearchParams(window.location.hash.split('?', 2)[1]).get('post')
 }
 
 export default function App() {
@@ -50,10 +59,17 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    const syncView = () => setActiveView(viewFromHash())
+    const syncView = () => {
+      setActiveView(viewFromHash())
+      const requestedPostId = postIdFromHash()
+      if (requestedPostId) {
+        void api.getPost(requestedPostId).then(setPost).catch(() => {})
+      }
+    }
+    syncView()
     window.addEventListener('hashchange', syncView)
     return () => window.removeEventListener('hashchange', syncView)
-  }, [])
+  }, [setPost])
 
   useEffect(() => {
     let active = true
@@ -181,8 +197,24 @@ export default function App() {
     if (p) setPost(p)
   }
 
-  async function handleForgetAsset(name: string) {
-    await run(() => api.deleteSceneAsset(name))
+  async function handleUseLatestBackdrop() {
+    if (!post) return
+    const p = await run(
+      () => api.useLatestBackdrop(post.id),
+      undefined,
+      'Updating the backdrop version…',
+    )
+    if (p) setPost(p)
+  }
+
+  async function handleBackdropChange(name: string | null) {
+    if (!post) return
+    const updated = await run(
+      () => api.updatePostBackdrop(post.id, name),
+      undefined,
+      'Updating the recurring backdrop…',
+    )
+    if (updated) setPost(updated)
   }
 
   async function handleGenerateImage() {
@@ -274,7 +306,11 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <a className="app-skip-link" href={activeView === 'characters' ? '#characters-main-content' : '#posts-main-content'}>
+      <a className="app-skip-link" href={
+        activeView === 'characters'
+          ? '#characters-main-content'
+          : activeView === 'backdrops' ? '#backdrops-main-content' : '#posts-main-content'
+      }>
         Skip to main content
       </a>
       {showMemoryDialog && imageReadiness && (
@@ -316,7 +352,8 @@ export default function App() {
             href="#posts"
             aria-current={activeView === 'posts' ? 'page' : undefined}
             onClick={(event) => {
-              if (characterStudioDirty && !window.confirm('Discard this unfinished character card?')) {
+              if (characterStudioDirty && activeView === 'characters'
+                && !window.confirm('Discard this unfinished character card?')) {
                 event.preventDefault()
               }
             }}
@@ -329,6 +366,18 @@ export default function App() {
           >
             Character Studio
           </a>
+          <a
+            href="#backdrops"
+            aria-current={activeView === 'backdrops' ? 'page' : undefined}
+            onClick={(event) => {
+              if (characterStudioDirty && activeView === 'characters'
+                && !window.confirm('Discard this unfinished character card?')) {
+                event.preventDefault()
+              }
+            }}
+          >
+            Backdrops
+          </a>
         </div>
       </nav>
 
@@ -340,28 +389,49 @@ export default function App() {
         )}>
           <CharacterStudio onDirtyChange={setCharacterStudioDirty} />
         </Suspense>
-      ) : <div className="mx-auto max-w-5xl px-6 py-8 flex gap-6">
-        {history.length > 0 && (
-          <div className="w-64 shrink-0 space-y-4">
+      ) : activeView === 'backdrops' ? (
+        <Suspense fallback={(
+          <main id="backdrops-main-content" className="mx-auto max-w-5xl px-6 py-10">
+            <p role="status" className="text-sm text-gray-600">Loading Backdrops…</p>
+          </main>
+        )}>
+          <BackdropsPage />
+        </Suspense>
+      ) : <main id="posts-main-content" className="posts-page">
+        <header className="posts-hero">
+          <div>
+            <p className="posts-eyebrow">Content workspace</p>
+            <h2>Posts</h2>
+            <p>
+              Shape a real work update into a quality-checked LinkedIn post and a
+              consistent character illustration.
+            </p>
+          </div>
+          {post && (
+            <button type="button" className="post-button post-button--primary posts-new-button" onClick={startNew}>
+              Create new post
+            </button>
+          )}
+        </header>
+
+        <div className={`posts-layout ${history.length === 0 ? 'posts-layout--single' : ''}`}>
+          {history.length > 0 && (
             <HistorySidebar
               history={history}
               activeId={post?.id ?? null}
               onSelect={selectFromHistory}
-              onNew={startNew}
             />
-            <SceneAssetsPanel />
-          </div>
-        )}
+          )}
 
-        <main id="posts-main-content" className="flex-1 space-y-6">
+          <div className="posts-workspace">
           {post && <JourneyProgress post={post} activity={journeyActivity} />}
 
           {post && <StepStatus post={post} onRetry={handleRetryStep} loading={working} />}
 
           {!post && (
-            <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+            <section className="post-panel post-panel--brief" aria-labelledby="new-post-heading">
               <BriefForm onSubmit={handleNewBrief} loading={working} />
-            </div>
+            </section>
           )}
 
           {post && post.status === 'clarifying' && (
@@ -395,8 +465,9 @@ export default function App() {
               <LockAndScene
                 post={post}
                 onUpdateScene={handleUpdateScene}
+                onBackdropChange={handleBackdropChange}
+                onUseLatestBackdrop={handleUseLatestBackdrop}
                 onGenerateImage={handleGenerateImage}
-                onForgetAsset={handleForgetAsset}
                 loading={working}
                 error={imageError}
               />
@@ -421,7 +492,8 @@ export default function App() {
                 onFinalize={handleFinalize}
                 onRegenerateImage={handleGenerateImage}
                 onUpdateScene={handleUpdateScene}
-                onForgetAsset={handleForgetAsset}
+                onBackdropChange={handleBackdropChange}
+                onUseLatestBackdrop={handleUseLatestBackdrop}
                 loading={working}
               />
               <FeedbackForm onSubmit={handleFeedback} />
@@ -438,8 +510,9 @@ export default function App() {
               <DraftHistory postId={post.id} currentVersion={post.draft_version} />
             </>
           )}
-        </main>
-      </div>}
+          </div>
+        </div>
+      </main>}
     </div>
   )
 }

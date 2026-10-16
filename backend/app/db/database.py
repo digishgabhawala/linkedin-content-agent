@@ -5,7 +5,9 @@ configuration: models and queries never name a schema -- SQLAlchemy's
 schema_translate_map applies it -- so moving to another project/schema is a
 config change plus a data copy (see app/db/copy.py).
 """
-from sqlalchemy import create_engine, inspect, text
+import uuid
+
+from sqlalchemy import create_engine, inspect, select, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 from sqlalchemy.pool import NullPool
@@ -47,6 +49,7 @@ _NEW_POST_COLUMNS = {
     "recalibration_count": "INTEGER NOT NULL DEFAULT 0",
     "escalation_reason": "TEXT",
     "scene_asset_name": "TEXT",
+    "scene_asset_version_id": "TEXT",
     "image_task_id": "TEXT",
     "image_profile": "TEXT",
     "active_step": "TEXT",
@@ -62,7 +65,13 @@ _NEW_CHARACTER_COLUMNS = {
 }
 
 _NEW_HERO_CANDIDATE_COLUMNS = {
-    "selected_at": "DATETIME",
+    "selected_at": "TIMESTAMP",
+}
+
+_NEW_SCENE_ASSET_COLUMNS = {
+    "current_version": "INTEGER NOT NULL DEFAULT 1",
+    "display_name": "TEXT",
+    "archived_at": "TIMESTAMP",
 }
 
 
@@ -104,6 +113,81 @@ def _add_missing_hero_candidate_columns(bind: Engine, schema: str) -> None:
                 conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {coltype}"))
 
 
+def _add_missing_scene_asset_columns(bind: Engine, schema: str) -> None:
+    postgres = bind.dialect.name == "postgresql"
+    existing = {c["name"] for c in inspect(bind).get_columns(
+        "scene_assets", schema=schema if postgres else None)}
+    table = f'"{schema}".scene_assets' if postgres else "scene_assets"
+    with bind.begin() as conn:
+        for column, coltype in _NEW_SCENE_ASSET_COLUMNS.items():
+            if column not in existing:
+                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {coltype}"))
+
+
+def _backfill_scene_asset_versions(bind: Engine, schema: str) -> None:
+    """Turn every pre-versioning backdrop into v1 and pin legacy posts.
+
+    Core statements select only columns guaranteed to exist, which keeps the
+    lightweight old-schema migration tests valid as well as production.
+    """
+    from .models import Post, SceneAsset, SceneAssetVersion
+
+    assets = SceneAsset.__table__
+    versions = SceneAssetVersion.__table__
+    posts = Post.__table__
+    post_table = f'"{schema}".posts' if bind.dialect.name == "postgresql" else "posts"
+    with bind.begin() as conn:
+        rows = conn.execute(select(
+            assets.c.name, assets.c.detail_text, assets.c.current_version,
+        )).mappings().all()
+        version_ids: dict[str, str] = {}
+        for row in rows:
+            existing = conn.execute(select(versions.c.id).where(
+                versions.c.scene_asset_name == row["name"],
+                versions.c.version == row["current_version"],
+            )).scalar_one_or_none()
+            version_id = existing or str(uuid.uuid4())
+            if existing is None:
+                conn.execute(versions.insert().values(
+                    id=version_id,
+                    scene_asset_name=row["name"],
+                    version=row["current_version"],
+                    detail_text=row["detail_text"],
+                ))
+            version_ids[row["name"]] = version_id
+
+        legacy_posts = conn.execute(select(posts.c.id, posts.c.scene_asset_name).where(
+            posts.c.scene_asset_name.is_not(None),
+            posts.c.scene_asset_version_id.is_(None),
+        )).mappings().all()
+        for post in legacy_posts:
+            version_id = version_ids.get(post["scene_asset_name"])
+            if version_id:
+                conn.execute(text(
+                    f"UPDATE {post_table} SET scene_asset_version_id = :version_id "
+                    "WHERE id = :post_id"
+                ), {"version_id": version_id, "post_id": post["id"]})
+
+
+def _backfill_scene_asset_display_names(bind: Engine) -> None:
+    """Give legacy backdrop slugs a readable label without changing their IDs."""
+    from .models import SceneAsset
+
+    assets = SceneAsset.__table__
+    with bind.begin() as conn:
+        rows = conn.execute(select(
+            assets.c.id, assets.c.name, assets.c.display_name,
+        )).mappings().all()
+        for row in rows:
+            if row["display_name"]:
+                continue
+            words = row["name"].replace("_", " ").strip()
+            conn.execute(
+                assets.update().where(assets.c.id == row["id"]).values(
+                    display_name=words[:1].upper() + words[1:]),
+            )
+
+
 def init_db(bind: Engine = engine, schema: str = settings.db_schema) -> None:
     from . import models  # noqa: F401 — ensures models are registered
     if bind.dialect.name == "postgresql":
@@ -113,6 +197,9 @@ def init_db(bind: Engine = engine, schema: str = settings.db_schema) -> None:
     _add_missing_post_columns(bind, schema)
     _add_missing_character_columns(bind, schema)
     _add_missing_hero_candidate_columns(bind, schema)
+    _add_missing_scene_asset_columns(bind, schema)
+    _backfill_scene_asset_versions(bind, schema)
+    _backfill_scene_asset_display_names(bind)
 
 
 def get_db():

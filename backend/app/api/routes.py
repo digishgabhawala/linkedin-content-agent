@@ -22,6 +22,7 @@ from ..db.models import (
     Post,
     PostDraft,
     SceneAsset,
+    SceneAssetVersion,
 )
 from ..services import feedback_service as fs
 from ..services import hero_generation as hgs
@@ -86,8 +87,18 @@ class SceneUpdateRequest(BaseModel):
     scene_instruction: str
 
 
+class PostBackdropRequest(BaseModel):
+    scene_asset_name: str | None = None
+
+
+class SceneAssetCreateRequest(BaseModel):
+    display_name: str = Field(min_length=1, max_length=80)
+    detail_text: str = Field(min_length=1, max_length=1500)
+
+
 class SceneAssetUpdateRequest(BaseModel):
-    detail_text: str
+    display_name: str | None = Field(None, min_length=1, max_length=80)
+    detail_text: str = Field(min_length=1, max_length=1500)
 
 
 class FeedbackRequest(BaseModel):
@@ -180,6 +191,9 @@ def _active_step_view(post: Post) -> dict | None:
 
 
 def _serialize_post(post: Post) -> dict:
+    backdrop_version = post.backdrop_version
+    backdrop = post.scene_asset
+    active_backdrop = backdrop if backdrop and backdrop.archived_at is None else None
     return {
         "id": post.id,
         "character_id": post.character_id,
@@ -197,6 +211,15 @@ def _serialize_post(post: Post) -> dict:
         "escalation_reason": post.escalation_reason,
         "scene_instruction": post.scene_instruction,
         "scene_asset_name": post.scene_asset_name,
+        "scene_asset_display_name": (
+            backdrop.display_name or backdrop.name.replace("_", " ").capitalize()
+            if backdrop else None),
+        "scene_asset_version": backdrop_version.version if backdrop_version else None,
+        "scene_asset_latest_version": (
+            active_backdrop.current_version if active_backdrop else None),
+        "scene_asset_is_latest": bool(
+            backdrop_version and active_backdrop
+            and backdrop_version.version == active_backdrop.current_version),
         "seed": post.seed,
         "image_url": _image_url(post),
         "has_final_image": post.final_image_path is not None,
@@ -258,12 +281,39 @@ def _post_or_404(db: Session, post_id: str) -> Post:
     return post
 
 
-def _serialize_scene_asset(asset: SceneAsset) -> dict:
+def _post_usage_summary(post: Post) -> dict:
+    return {
+        "id": post.id,
+        "brief": post.brief,
+        "status": post.status,
+        "updated_at": _utc_iso(post.updated_at),
+    }
+
+
+def _serialize_scene_asset(asset: SceneAsset, db: Session) -> dict:
+    usage = ps.scene_asset_usage_posts(db, asset.name)
     return {
         "name": asset.name,
+        "display_name": asset.display_name or asset.name.replace("_", " ").capitalize(),
         "detail_text": asset.detail_text,
+        "current_version": asset.current_version,
+        "archived_at": _utc_iso(asset.archived_at),
+        "usage_count": len(usage),
         "created_at": _utc_iso(asset.created_at),
         "updated_at": _utc_iso(asset.updated_at),
+    }
+
+
+def _serialize_scene_asset_version(version: SceneAssetVersion, db: Session) -> dict:
+    usage = ps.scene_asset_usage_posts(db, version.scene_asset_name, version.id)
+    return {
+        "id": version.id,
+        "scene_asset_name": version.scene_asset_name,
+        "version": version.version,
+        "detail_text": version.detail_text,
+        "usage_count": len(usage),
+        "posts": [_post_usage_summary(post) for post in usage],
+        "created_at": _utc_iso(version.created_at),
     }
 
 
@@ -556,6 +606,26 @@ def update_scene(post_id: str, req: SceneUpdateRequest, db: Session = Depends(ge
     return _serialize_post(post)
 
 
+@router.patch("/posts/{post_id}/backdrop")
+def set_post_backdrop(post_id: str, req: PostBackdropRequest, db: Session = Depends(get_db)):
+    _idle_post_or_409(db, post_id)
+    try:
+        post = ps.set_post_scene_asset(db, post_id, req.scene_asset_name)
+    except ps.PostServiceError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return _serialize_post(post)
+
+
+@router.post("/posts/{post_id}/scene/use-latest-backdrop")
+def use_latest_backdrop(post_id: str, db: Session = Depends(get_db)):
+    _idle_post_or_409(db, post_id)
+    try:
+        post = ps.use_latest_scene_asset(db, post_id)
+    except ps.PostServiceError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return _serialize_post(post)
+
+
 @router.post("/posts/{post_id}/generate-image")
 async def generate_image(post_id: str, req: GenerateImageRequest | None = None,
                          db: Session = Depends(get_db),
@@ -584,26 +654,71 @@ def finalize(post_id: str, db: Session = Depends(get_db)):
 
 
 @router.get("/scene-assets")
-def list_scene_assets(db: Session = Depends(get_db)):
-    return [_serialize_scene_asset(a) for a in ps.list_scene_assets(db)]
+def list_scene_assets(include_archived: bool = False, db: Session = Depends(get_db)):
+    return [
+        _serialize_scene_asset(asset, db)
+        for asset in ps.list_scene_assets(db, include_archived=include_archived)
+    ]
+
+
+@router.post("/scene-assets", status_code=201)
+def create_scene_asset(req: SceneAssetCreateRequest, db: Session = Depends(get_db)):
+    try:
+        asset = ps.create_scene_asset(db, req.display_name, req.detail_text)
+    except ps.PostServiceError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return _serialize_scene_asset(asset, db)
 
 
 @router.patch("/scene-assets/{name}")
 def update_scene_asset(name: str, req: SceneAssetUpdateRequest, db: Session = Depends(get_db)):
     try:
-        asset = ps.update_scene_asset(db, name, req.detail_text)
+        asset = ps.update_scene_asset(db, name, req.detail_text, req.display_name)
     except ps.PostServiceError as e:
         raise HTTPException(status_code=404, detail=str(e))
-    return _serialize_scene_asset(asset)
+    return _serialize_scene_asset(asset, db)
+
+
+@router.get("/scene-assets/{name}/versions")
+def list_scene_asset_versions(name: str, db: Session = Depends(get_db)):
+    return [
+        _serialize_scene_asset_version(version, db)
+        for version in ps.list_scene_asset_versions(db, name)
+    ]
+
+
+@router.post("/scene-assets/{name}/versions/{version}/restore")
+def restore_scene_asset_version(name: str, version: int, db: Session = Depends(get_db)):
+    try:
+        asset = ps.restore_scene_asset_version(db, name, version)
+    except ps.PostServiceError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    return _serialize_scene_asset(asset, db)
+
+
+@router.post("/scene-assets/{name}/archive")
+def archive_scene_asset(name: str, db: Session = Depends(get_db)):
+    try:
+        asset = ps.archive_scene_asset(db, name)
+    except ps.PostServiceError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    return _serialize_scene_asset(asset, db)
+
+
+@router.post("/scene-assets/{name}/unarchive")
+def unarchive_scene_asset(name: str, db: Session = Depends(get_db)):
+    try:
+        asset = ps.unarchive_scene_asset(db, name)
+    except ps.PostServiceError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    return _serialize_scene_asset(asset, db)
 
 
 @router.delete("/scene-assets/{name}")
 def delete_scene_asset(name: str, db: Session = Depends(get_db)):
-    """Deletes the stored asset so the next post whose scene proposes this
-    same name seeds a fresh description -- the "I don't want the same
-    coffee shop again" flow."""
+    """Backward-compatible archive behavior for older clients."""
     try:
         ps.delete_scene_asset(db, name)
     except ps.PostServiceError as e:
         raise HTTPException(status_code=404, detail=str(e))
-    return {"status": "ok"}
+    return {"status": "archived"}

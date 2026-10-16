@@ -3,6 +3,7 @@ import type {
   PostDraft,
   Feedback,
   SceneAsset,
+  SceneAssetVersion,
   ImageReadiness,
   RendererStatus,
   Character,
@@ -67,6 +68,9 @@ export const api = {
       body: JSON.stringify({ scene_instruction }),
     }),
 
+  useLatestBackdrop: (id: string) =>
+    req<Post>(`/posts/${id}/scene/use-latest-backdrop`, { method: 'POST' }),
+
   imageReadiness: () => req<ImageReadiness>('/resources/image-readiness'),
 
   rendererStatus: () => req<RendererStatus>('/resources/renderer-status'),
@@ -80,16 +84,41 @@ export const api = {
   finalize: (id: string) => req<Post>(`/posts/${id}/finalize`, { method: 'POST' }),
   retryStep: (id: string) => req<Post>(`/posts/${id}/retry-step`, { method: 'POST' }),
 
-  listSceneAssets: () => req<SceneAsset[]>('/scene-assets'),
+  listSceneAssets: (includeArchived = false) =>
+    req<SceneAsset[]>(`/scene-assets${includeArchived ? '?include_archived=true' : ''}`),
 
-  updateSceneAsset: (name: string, detail_text: string) =>
-    req<SceneAsset>(`/scene-assets/${name}`, {
-      method: 'PATCH',
-      body: JSON.stringify({ detail_text }),
+  createSceneAsset: (display_name: string, detail_text: string) =>
+    req<SceneAsset>('/scene-assets', {
+      method: 'POST',
+      body: JSON.stringify({ display_name, detail_text }),
     }),
 
-  deleteSceneAsset: (name: string) =>
-    req<{ status: string }>(`/scene-assets/${name}`, { method: 'DELETE' }),
+  updateSceneAsset: (name: string, display_name: string, detail_text: string) =>
+    req<SceneAsset>(`/scene-assets/${encodeURIComponent(name)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ display_name, detail_text }),
+    }),
+
+  listSceneAssetVersions: (name: string) =>
+    req<SceneAssetVersion[]>(`/scene-assets/${encodeURIComponent(name)}/versions`),
+
+  archiveSceneAsset: (name: string) =>
+    req<SceneAsset>(`/scene-assets/${encodeURIComponent(name)}/archive`, { method: 'POST' }),
+
+  unarchiveSceneAsset: (name: string) =>
+    req<SceneAsset>(`/scene-assets/${encodeURIComponent(name)}/unarchive`, { method: 'POST' }),
+
+  restoreSceneAssetVersion: (name: string, version: number) =>
+    req<SceneAsset>(
+      `/scene-assets/${encodeURIComponent(name)}/versions/${version}/restore`,
+      { method: 'POST' },
+    ),
+
+  updatePostBackdrop: (id: string, scene_asset_name: string | null) =>
+    req<Post>(`/posts/${id}/backdrop`, {
+      method: 'PATCH',
+      body: JSON.stringify({ scene_asset_name }),
+    }),
 
   createCharacter: (character: CharacterCardInput) =>
     req<Character>('/characters', {
