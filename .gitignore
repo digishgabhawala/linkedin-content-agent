@@ -10,6 +10,8 @@ venv/
 # Node
 node_modules/
 dist/
+test-results/
+playwright-report/
 
 # Runtime data / secrets
 *.db

@@ -14,6 +14,7 @@ from app.db.models import (
     Post,
     PostDraft,
     SceneAsset,
+    SceneAssetVersion,
 )
 
 
@@ -23,6 +24,7 @@ def _seed(url):
     with Session(engine) as s:
         post = Post(id="p1", character_id="gtee_dev", brief="brief", status="image_ready",
                     image_profile="lightning", final_image_path="https://x/y.png",
+                    scene_asset_name="office", scene_asset_version_id="sv1",
                     created_at=datetime(2026, 10, 1, 9, 30))  # noqa: DTZ001 -- naive UTC, like every DB column
         run = HeroGenerationRun(
             id="r1", character_id="gtee_dev", card_json='{"character_id":"gtee_dev"}',
@@ -31,6 +33,8 @@ def _seed(url):
                    run, HeroCandidate(id="h1", run_id="r1", task_id="t1", seed=1000,
                                       status="ready", image_url="https://x/hero.png"), post,
                    SceneAsset(id="s1", name="office", detail_text="a desk"),
+                   SceneAssetVersion(id="sv1", scene_asset_name="office", version=1,
+                                     detail_text="a desk"),
                    PostDraft(id="d1", post_id="p1", version=1, post_text="hello",
                              generated_by="draft"),
                    Feedback(id="f1", post_id="p1", stage="draft", user_note="nice")])
@@ -44,7 +48,8 @@ def test_copies_every_table_preserving_ids_and_values(tmp_path):
     counts = copy_database(source, target, "linkedin")
 
     assert counts == {"characters": 1, "hero_generation_runs": 1, "hero_candidates": 1,
-                      "posts": 1, "scene_assets": 1, "post_drafts": 1, "feedback": 1}
+                      "scene_assets": 1, "scene_asset_versions": 1, "posts": 1,
+                      "post_drafts": 1, "feedback": 1}
     with Session(build_engine(target, "linkedin")) as s:
         post = s.get(Post, "p1")
         assert post.image_profile == "lightning"
@@ -52,6 +57,7 @@ def test_copies_every_table_preserving_ids_and_values(tmp_path):
         assert post.created_at == datetime(2026, 10, 1, 9, 30)  # noqa: DTZ001
         assert s.scalars(select(PostDraft.post_id)).all() == ["p1"]
         assert s.get(SceneAsset, "s1").name == "office"
+        assert post.backdrop_version.detail_text == "a desk"
         assert post.character.personality == "dry humor"
         assert s.get(HeroGenerationRun, "r1").candidates[0].image_url == "https://x/hero.png"
 

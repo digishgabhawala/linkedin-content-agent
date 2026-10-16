@@ -19,21 +19,22 @@ export function DraftPanel({ post, onRedraft, onRegenerate, onLock, loading }: P
   }
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm space-y-4">
-      <div className="flex items-center justify-between">
-        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+    <section className="post-panel post-panel--draft" aria-labelledby={`draft-${post.id}-heading`}>
+      <div className="post-panel__topline">
+        <p id={`draft-${post.id}-heading`} className="post-panel__eyebrow">
           Draft v{post.draft_version}
         </p>
-        <span className="text-xs text-gray-400">{post.post_text?.length ?? 0} chars</span>
+        <span className="post-panel__meta">{post.post_text?.length ?? 0} characters</span>
       </div>
 
-      <pre className="whitespace-pre-wrap font-sans text-sm text-gray-800 leading-relaxed">
+      <pre className="post-copy">
         {post.post_text}
       </pre>
 
-      <div className="flex gap-2">
+      <div className="post-field post-revision-field">
+        <label htmlFor={`draft-${post.id}-revision`}>How should this draft change?</label>
         <input
-          className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
+          id={`draft-${post.id}-revision`}
           placeholder="Revision instruction, e.g. 'shorter hook, more punch'…"
           value={instruction}
           onChange={e => setInstruction(e.target.value)}
@@ -41,30 +42,33 @@ export function DraftPanel({ post, onRedraft, onRegenerate, onLock, loading }: P
           disabled={loading}
         />
         <button
+          type="button"
           onClick={submitRegenerate}
           disabled={loading || !instruction.trim()}
-          className="rounded-lg bg-gray-700 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50 whitespace-nowrap"
+          className="post-button post-button--secondary"
         >
-          Revise
+          Revise draft
         </button>
       </div>
 
-      <div className="flex gap-2 pt-2 border-t border-gray-100">
+      <div className="post-actions post-actions--separated">
         <button
+          type="button"
           onClick={onRedraft}
           disabled={loading}
-          className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+          className="post-button post-button--secondary"
         >
           Start over
         </button>
         <button
+          type="button"
           onClick={onLock}
           disabled={loading}
-          className="ml-auto rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+          className="post-button post-button--primary post-actions__primary"
         >
-          Lock this draft →
+          Lock this draft
         </button>
       </div>
-    </div>
+    </section>
   )
 }

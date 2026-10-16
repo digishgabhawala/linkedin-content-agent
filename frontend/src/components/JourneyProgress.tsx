@@ -26,47 +26,46 @@ export function JourneyProgress({ post, activity }: Props) {
   const progress = `${(current / (steps.length - 1)) * 100}%`
 
   return (
-    <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm" aria-label="Post progress">
-      <div className="mb-4 flex items-center justify-between gap-3">
+    <section className="post-progress" aria-label="Post progress">
+      <div className="post-progress__heading">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Your progress</p>
-          <p className="mt-1 text-sm font-medium text-gray-800">
+          <p className="post-panel__eyebrow">Post journey</p>
+          <p className="post-progress__current">
             Step {current + 1} of {steps.length}: {steps[current]}
           </p>
         </div>
         {activity && (
-          <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700">
+          <span className="post-progress__activity" role="status">
             {activity}
           </span>
         )}
       </div>
 
-      <div className="relative">
-        <div className="absolute left-3 right-3 top-3 h-1 rounded bg-gray-200" />
+      <div className="post-progress__track">
+        <div className="post-progress__rail" />
         <div
-          className="absolute left-3 top-3 h-1 rounded bg-blue-500 transition-all duration-500"
+          className="post-progress__fill"
           style={{ width: `calc(${progress} - ${current === steps.length - 1 ? '1.5rem' : '0rem'})` }}
         />
-        <ol className="relative grid grid-cols-5 gap-2">
+        <ol className="post-progress__steps">
           {steps.map((step, index) => {
             const complete = index < current || (current === steps.length - 1 && index === current)
             const active = index === current && !complete
             return (
-              <li key={step} className="text-center">
+              <li key={step} className="post-progress__step">
                 <span
-                  className={`mx-auto flex h-7 w-7 items-center justify-center rounded-full border-2 text-xs font-semibold ${
+                  className={`post-progress__marker ${
                     complete
-                      ? 'border-green-600 bg-green-600 text-white'
+                      ? 'post-progress__marker--complete'
                       : active
-                        ? 'border-blue-600 bg-white text-blue-700'
-                        : 'border-gray-300 bg-white text-gray-400'
+                        ? 'post-progress__marker--active'
+                        : ''
                   }`}
                 >
-                  {complete ? '✓' : index + 1}
+                  <span aria-hidden="true">{complete ? '✓' : index + 1}</span>
+                  <span className="sr-only">{complete ? 'Complete' : `Step ${index + 1}`}</span>
                 </span>
-                <span className={`mt-2 block text-[11px] leading-tight ${
-                  index === current ? 'font-semibold text-gray-900' : 'text-gray-500'
-                }`}>
+                <span className={`post-progress__label ${index === current ? 'post-progress__label--active' : ''}`}>
                   {step}
                 </span>
               </li>

@@ -48,9 +48,14 @@ class Post(Base):
     scene_instruction = Column(Text, nullable=True)
     # Name of the SceneAsset (recurring backdrop, e.g. "office") this post's
     # scene reused/created, if any -- null for one-off metaphor scenes with
-    # no reusable setting. Traceability only; the asset's own detail_text is
-    # the source of truth, this just lets the UI point back to it.
+    # no reusable setting. The name keeps the prompt readable and lets the UI
+    # point back to the active asset; scene_asset_version_id is the immutable
+    # source of truth for this post.
     scene_asset_name = Column(String, nullable=True)
+    # Immutable SceneAssetVersion pinned when this scene was created or the
+    # user explicitly chose a backdrop. The short @name stays readable while
+    # this id preserves the exact historical meaning used at render time.
+    scene_asset_version_id = Column(String, ForeignKey("scene_asset_versions.id"), nullable=True)
     seed = Column(Integer, nullable=True)
     # The rendered image's Supabase Storage URL (via the task-queue's
     # artifact store). Very old rows may hold a local file path, which is no
@@ -78,6 +83,12 @@ class Post(Base):
     # whose mascot has no row yet still works, just without them.
     character = relationship(
         "Character", primaryjoin="foreign(Post.character_id) == Character.character_id",
+        viewonly=True, lazy="selectin")
+    scene_asset = relationship(
+        "SceneAsset", primaryjoin="foreign(Post.scene_asset_name) == SceneAsset.name",
+        viewonly=True, lazy="selectin")
+    backdrop_version = relationship(
+        "SceneAssetVersion", foreign_keys=[scene_asset_version_id],
         viewonly=True, lazy="selectin")
 
 
@@ -175,15 +186,37 @@ class SceneAsset(Base):
     brainstorm). Grows dynamically: scene_agent proposes a name for any scene
     whose backdrop is a real recurring place (not a one-off metaphor prop);
     if the name is new, whatever detail text it generated this time becomes
-    the seed, persisted here for every future scene with that name to reuse
-    verbatim instead of re-deriving generic phrasing each time."""
+    the seed. detail_text/current_version point to the active revision;
+    immutable SceneAssetVersion rows preserve what older posts used."""
     __tablename__ = "scene_assets"
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     name = Column(String, nullable=False, unique=True)  # slug, e.g. "office"
+    # Editable label for people; `name` stays the stable prompt identifier.
+    display_name = Column(String, nullable=True)
     detail_text = Column(Text, nullable=False)
+    current_version = Column(Integer, nullable=False, default=1)
+    archived_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class SceneAssetVersion(Base):
+    """An immutable revision of a recurring backdrop description.
+
+    The name deliberately is not a foreign key to SceneAsset: archiving an
+    active backdrop must not destroy history pinned by older posts.
+    """
+    __tablename__ = "scene_asset_versions"
+    __table_args__ = (
+        UniqueConstraint("scene_asset_name", "version", name="uq_scene_asset_version"),
+    )
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    scene_asset_name = Column(String, nullable=False)
+    version = Column(Integer, nullable=False)
+    detail_text = Column(Text, nullable=False)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
 
 
 class Feedback(Base):

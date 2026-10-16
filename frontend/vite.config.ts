@@ -8,7 +8,7 @@ export default defineConfig({
   server: {
     port: 11001,
     proxy: {
-      '/api/linkedin': 'http://localhost:11000',
+      '/api/linkedin': process.env.VITE_API_PROXY_TARGET ?? 'http://localhost:11000',
     }
   }
 })

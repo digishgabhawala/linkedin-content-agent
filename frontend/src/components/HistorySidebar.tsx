@@ -4,7 +4,6 @@ interface Props {
   history: Post[]
   activeId: string | null
   onSelect: (post: Post) => void
-  onNew: () => void
 }
 
 const STATUS_COLOR: Record<string, string> = {
@@ -17,34 +16,32 @@ const STATUS_COLOR: Record<string, string> = {
   ready: 'text-green-700',
 }
 
-export function HistorySidebar({ history, activeId, onSelect, onNew }: Props) {
+export function HistorySidebar({ history, activeId, onSelect }: Props) {
   return (
-    <aside className="space-y-2">
-      <button
-        onClick={onNew}
-        className="w-full rounded-lg border border-dashed border-gray-300 px-3 py-2 text-xs font-medium text-gray-600 hover:border-blue-300 hover:bg-blue-50"
-      >
-        + New post
-      </button>
-      <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 pt-2">
-        History
-      </p>
-      {history.map(p => (
-        <button
-          key={p.id}
-          onClick={() => onSelect(p)}
-          className={`w-full text-left rounded-lg border px-3 py-2 text-xs hover:border-blue-300 hover:bg-blue-50 transition-colors ${
-            activeId === p.id ? 'border-blue-400 bg-blue-50' : 'border-gray-200 bg-white'
-          }`}
-        >
-          <div className="font-medium text-gray-800 truncate">
-            {p.brief.slice(0, 60)}
-          </div>
-          <div className={`mt-0.5 capitalize ${STATUS_COLOR[p.status] ?? 'text-gray-500'}`}>
-            {p.status.replace('_', ' ')}
-          </div>
-        </button>
-      ))}
+    <aside className="posts-history" aria-labelledby="post-history-heading">
+      <div className="posts-history__heading">
+        <div>
+          <p className="posts-history__eyebrow">Workspace</p>
+          <h3 id="post-history-heading">Recent posts</h3>
+        </div>
+        <span>{history.length}</span>
+      </div>
+      <div className="posts-history__list">
+        {history.map(p => (
+          <button
+            type="button"
+            key={p.id}
+            onClick={() => onSelect(p)}
+            aria-current={activeId === p.id ? 'true' : undefined}
+            className="posts-history__item"
+          >
+            <span className="posts-history__brief">{p.brief.slice(0, 72)}</span>
+            <span className={`posts-history__status capitalize ${STATUS_COLOR[p.status] ?? 'text-gray-500'}`}>
+              {p.status.replace('_', ' ')}
+            </span>
+          </button>
+        ))}
+      </div>
     </aside>
   )
 }

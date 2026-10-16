@@ -32,52 +32,58 @@ export function NeedsInput({ post, onSubmitInfo, onAcceptDraft, loading }: Props
   }
 
   return (
-    <div className="rounded-xl border border-amber-200 bg-amber-50 p-6 shadow-sm space-y-4">
-      <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">
+    <section className="post-panel post-panel--warning" aria-labelledby={`needs-input-${post.id}`}>
+      <p className="post-panel__eyebrow post-panel__eyebrow--warning">
         Needs your input
       </p>
-      <p className="whitespace-pre-wrap text-sm text-amber-900">{post.escalation_reason}</p>
+      <h3 id={`needs-input-${post.id}`} className="post-attention-heading">A real detail is missing</h3>
+      <p className="post-attention-copy">{post.escalation_reason}</p>
 
       {post.post_text && (
-        <details className="text-sm text-gray-700">
-          <summary className="cursor-pointer text-xs font-medium text-gray-500">
+        <details className="post-disclosure">
+          <summary>
             Current best draft
           </summary>
-          <pre className="mt-2 whitespace-pre-wrap font-sans text-sm leading-relaxed">
+          <pre className="post-copy post-copy--nested">
             {post.post_text}
           </pre>
         </details>
       )}
 
-      <textarea
-        value={info}
-        onChange={e => setInfo(e.target.value)}
-        placeholder="Add the detail requested above..."
-        rows={3}
-        className="w-full rounded-lg border border-gray-300 p-2 text-sm"
-      />
-      <div className="flex gap-3">
+      <div className="post-field">
+        <label htmlFor={`needs-input-${post.id}-detail`}>Additional detail</label>
+        <textarea
+          id={`needs-input-${post.id}-detail`}
+          value={info}
+          onChange={e => setInfo(e.target.value)}
+          placeholder="Add the detail requested above…"
+          rows={4}
+        />
+      </div>
+      <div className="post-actions">
         <button
+          type="button"
           onClick={submit}
           disabled={loading || !info.trim()}
-          className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-50"
+          className="post-button post-button--warning"
         >
           Submit and retry
         </button>
         <button
+          type="button"
           onClick={onAcceptDraft}
           disabled={loading}
-          className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+          className="post-button post-button--secondary"
         >
           Accept current draft as-is
         </button>
       </div>
 
       {loading && (
-        <p className="text-xs text-gray-500 animate-pulse">
+        <p className="post-live-status" role="status">
           Writing and scoring a fresh draft — this can take 1-2 minutes. ({elapsed}s)
         </p>
       )}
-    </div>
+    </section>
   )
 }

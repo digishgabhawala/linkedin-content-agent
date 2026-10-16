@@ -12,27 +12,30 @@ export function ConversationHistory({ post }: Props) {
   if (answered.length === 0) return null
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+    <section className="post-panel post-panel--compact post-disclosure-panel">
       <button
+        type="button"
         onClick={() => setOpen(o => !o)}
-        className="text-xs font-semibold uppercase tracking-wide text-gray-500"
+        className="post-disclosure-toggle"
+        aria-expanded={open}
       >
-        Conversation history ({answered.length}) {open ? '▲' : '▼'}
+        <span>Conversation history <span className="post-chip">{answered.length}</span></span>
+        <span aria-hidden="true">{open ? '−' : '+'}</span>
       </button>
       {open && (
-        <div className="mt-3 space-y-3">
-          <div className="rounded-lg border border-gray-100 p-3">
-            <p className="text-xs font-medium text-gray-500">Original brief</p>
-            <p className="mt-1 whitespace-pre-wrap text-xs text-gray-600">{post.brief}</p>
+        <div className="post-disclosure-panel__body">
+          <div className="post-history-entry">
+            <p>Original brief</p>
+            <span>{post.brief}</span>
           </div>
           {answered.map((t, i) => (
-            <div key={i} className="rounded-lg border border-gray-100 p-3">
-              <p className="text-xs font-medium text-gray-500">Q: {t.question}</p>
-              <p className="mt-1 whitespace-pre-wrap text-xs text-gray-600">A: {t.answer}</p>
+            <div key={i} className="post-history-entry">
+              <p>Q: {t.question}</p>
+              <span>A: {t.answer}</span>
             </div>
           ))}
         </div>
       )}
-    </div>
+    </section>
   )
 }
