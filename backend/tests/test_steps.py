@@ -8,6 +8,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.agents.taxonomy import GATE_PILLARS, OPTIMIZATION_PILLARS
+from app.auth import LOCAL_USER_ID
 from app.config import settings
 from app.db.database import Base
 from app.db.models import Character, Post, PostDraft
@@ -160,7 +161,7 @@ LONG_BRIEF = "We cut the nightly pipeline from four hours to fifty minutes. " * 
 
 def test_create_flow_runs_one_task_per_step_and_waits_for_the_user(db):
     q = FakeQueue()
-    post = _run(steps.start_create(db, q, LONG_BRIEF, None))
+    post = _run(steps.start_create(db, q, LONG_BRIEF, None, owner_id=LOCAL_USER_ID))
     assert _active(post) == "category" and post.status == "clarifying"
     assert len(q.submitted("text_generation")) == 1  # acknowledged after ONE submission
 
@@ -193,7 +194,7 @@ def test_create_flow_runs_one_task_per_step_and_waits_for_the_user(db):
 
 def test_status_check_while_running_changes_nothing(db):
     q = FakeQueue()
-    post = _run(steps.start_create(db, q, LONG_BRIEF, None))
+    post = _run(steps.start_create(db, q, LONG_BRIEF, None, owner_id=LOCAL_USER_ID))
     q.latest()["status"] = "claimed"
     post = _run(steps.advance(db, q, post))
     assert _active(post) == "category" and len(q.submitted()) == 1
@@ -201,7 +202,7 @@ def test_status_check_while_running_changes_nothing(db):
 
 def test_failed_step_records_error_and_retry_resubmits_same_step(db):
     q = FakeQueue()
-    post = _run(steps.start_create(db, q, LONG_BRIEF, None))
+    post = _run(steps.start_create(db, q, LONG_BRIEF, None, owner_id=LOCAL_USER_ID))
     q.finish(error="text_unavailable: Ollama not reachable")
     post = _run(steps.advance(db, q, post))
     assert _active(post) is None and "Ollama not reachable" in post.step_error
@@ -213,14 +214,14 @@ def test_failed_step_records_error_and_retry_resubmits_same_step(db):
 
 def test_compute_action_on_a_busy_post_is_rejected(db):
     q = FakeQueue()
-    post = _run(steps.start_create(db, q, LONG_BRIEF, None))
+    post = _run(steps.start_create(db, q, LONG_BRIEF, None, owner_id=LOCAL_USER_ID))
     with pytest.raises(steps.StepError, match="busy"):
         _run(steps.retry_step(db, q, post.id))
 
 
 def test_lock_and_image_steps(db):
     q = FakeQueue()
-    post = Post(character_id="gtee_dev", brief="b", status="drafting", post_text="A post.",
+    post = Post(owner_id=LOCAL_USER_ID, character_id="gtee_dev", brief="b", status="drafting", post_text="A post.",
                 clarify_transcript="[]")
     db.add(post)
     db.commit()
@@ -252,7 +253,7 @@ def test_image_task_carries_remote_locked_hero_snapshot(db):
     db.add(Character(character_id="remote_dev", card_json=json.dumps(card),
                      hero_asset_id="sha256:abc", hero_version=3,
                      hero_image_url="https://storage.example/hero.png"))
-    post = Post(character_id="remote_dev", brief="b", status="locked", post_text="p",
+    post = Post(owner_id=LOCAL_USER_ID, character_id="remote_dev", brief="b", status="locked", post_text="p",
                 scene_instruction="waving", seed=3, clarify_transcript="[]")
     db.add(post)
     db.commit()
@@ -268,7 +269,7 @@ def test_image_task_carries_remote_locked_hero_snapshot(db):
 
 def test_failed_image_keeps_image_failure_fields(db):
     q = FakeQueue()
-    post = Post(character_id="gtee_dev", brief="b", status="locked", post_text="p",
+    post = Post(owner_id=LOCAL_USER_ID, character_id="gtee_dev", brief="b", status="locked", post_text="p",
                 scene_instruction="waving", seed=3, clarify_transcript="[]")
     db.add(post)
     db.commit()
@@ -285,7 +286,7 @@ def test_two_pollers_never_submit_the_next_step_twice(tmp_path):
     Session = sessionmaker(bind=engine)
     q = FakeQueue()
     s1 = Session()
-    post = _run(steps.start_create(s1, q, LONG_BRIEF, None))
+    post = _run(steps.start_create(s1, q, LONG_BRIEF, None, owner_id=LOCAL_USER_ID))
     s2 = Session()
     stale = s2.get(Post, post.id)  # second tab loaded the same state
     q.finish('{"category": "lessons_learned"}')
@@ -301,7 +302,7 @@ def test_two_pollers_never_submit_the_next_step_twice(tmp_path):
 def test_image_submitted_before_the_step_engine_still_completes(db):
     q = FakeQueue()
     _run(q.post("/api/tasks", {"task_type": "image_generation", "payload": {}}, 30))
-    post = Post(character_id="gtee_dev", brief="b", status="image_queued", post_text="p",
+    post = Post(owner_id=LOCAL_USER_ID, character_id="gtee_dev", brief="b", status="image_queued", post_text="p",
                 scene_instruction="waving", seed=3, clarify_transcript="[]",
                 image_task_id="t1")  # pre-3a: no active_step recorded
     db.add(post)
@@ -313,7 +314,7 @@ def test_image_submitted_before_the_step_engine_still_completes(db):
 
 def test_after_a_hand_off_the_new_step_does_not_show_the_old_tasks_status(db):
     q = FakeQueue()
-    post = _run(steps.start_create(db, q, LONG_BRIEF, None))
+    post = _run(steps.start_create(db, q, LONG_BRIEF, None, owner_id=LOCAL_USER_ID))
     q.finish('{"category": "lessons_learned"}')
     post = _run(steps.advance(db, q, post))
     assert _active(post) == "clarify"
@@ -334,7 +335,7 @@ class NotFoundQueue(FakeQueue):
 
 def test_task_gone_from_queue_becomes_a_retryable_failure_not_busy_forever(db):
     q = FakeQueue()
-    post = _run(steps.start_create(db, q, LONG_BRIEF, None))
+    post = _run(steps.start_create(db, q, LONG_BRIEF, None, owner_id=LOCAL_USER_ID))
     gone = NotFoundQueue()
     gone.tasks = q.tasks
     post = _run(steps.advance(db, gone, post))
@@ -358,7 +359,7 @@ def test_claim_is_committed_before_any_network_wait(tmp_path):
 
     q = Watching()
     s = Session()
-    post = Post(character_id="gtee_dev", brief="b", status="locked", post_text="p",
+    post = Post(owner_id=LOCAL_USER_ID, character_id="gtee_dev", brief="b", status="locked", post_text="p",
                 scene_instruction="waving", seed=3, clarify_transcript="[]")
     s.add(post)
     s.commit()
@@ -383,7 +384,7 @@ class BadArtifactQueue(FakeQueue):
 
 def test_error_while_applying_a_result_is_recorded_once_not_repeated_every_poll(db):
     q = BadArtifactQueue()
-    post = Post(character_id="gtee_dev", brief="b", status="locked", post_text="p",
+    post = Post(owner_id=LOCAL_USER_ID, character_id="gtee_dev", brief="b", status="locked", post_text="p",
                 scene_instruction="waving", seed=3, clarify_transcript="[]")
     db.add(post)
     db.commit()
@@ -409,7 +410,7 @@ def test_non_object_json_from_the_model_fails_safe():
 def test_clarify_turn_cap_forces_draft(db):
     q = FakeQueue()
     turns = [{"question": f"q{i}", "answer": f"a{i}"} for i in range(settings.clarify_max_turns)]
-    post = Post(character_id="gtee_dev", brief=LONG_BRIEF, status="clarifying",
+    post = Post(owner_id=LOCAL_USER_ID, character_id="gtee_dev", brief=LONG_BRIEF, status="clarifying",
                 category="lessons_learned", clarify_transcript=json.dumps(turns))
     db.add(post)
     db.commit()
@@ -422,7 +423,7 @@ def test_clarify_turn_cap_forces_draft(db):
 def test_automatic_loop_rewrites_with_critique_then_escalates(db):
     q = FakeQueue()
     draft = "A grounded post about ownership and the pipeline we fixed. " * 30
-    post = Post(character_id="gtee_dev", brief=LONG_BRIEF, status="clarifying",
+    post = Post(owner_id=LOCAL_USER_ID, character_id="gtee_dev", brief=LONG_BRIEF, status="clarifying",
                 category="lessons_learned", clarify_transcript="[]", post_text=None)
     db.add(post)
     db.commit()
@@ -452,7 +453,7 @@ def test_automatic_loop_rewrites_with_critique_then_escalates(db):
 
 def test_manual_regenerate_rescores_without_changing_status_or_count(db):
     q = FakeQueue()
-    post = Post(character_id="gtee_dev", brief=LONG_BRIEF, status="drafting", post_text="old",
+    post = Post(owner_id=LOCAL_USER_ID, character_id="gtee_dev", brief=LONG_BRIEF, status="drafting", post_text="old",
                 category="lessons_learned", clarify_transcript="[]", recalibration_count=3)
     db.add(post)
     db.commit()
@@ -469,7 +470,7 @@ def test_image_retry_and_reroll_get_a_fresh_seed(db, monkeypatch):
     q = FakeQueue()
     seeds = iter([111, 222])
     monkeypatch.setattr(steps.random, "randint", lambda a, b: next(seeds))
-    post = Post(character_id="gtee_dev", brief="b", status="locked", post_text="p",
+    post = Post(owner_id=LOCAL_USER_ID, character_id="gtee_dev", brief="b", status="locked", post_text="p",
                 scene_instruction="waving", seed=7, clarify_transcript="[]")
     db.add(post)
     db.commit()
@@ -488,7 +489,7 @@ def test_post_stays_busy_while_another_request_is_handing_off(tmp_path):
     Session = sessionmaker(bind=engine)
     q = FakeQueue()
     s = Session()
-    post = _run(steps.start_create(s, q, LONG_BRIEF, None))
+    post = _run(steps.start_create(s, q, LONG_BRIEF, None, owner_id=LOCAL_USER_ID))
     q.finish('{"category": "lessons_learned"}')
     # simulate another request that claimed the transition and is mid-hand-off
     marker = json.dumps({**json.loads(post.active_step), "claimed_at": steps._now_iso()})
@@ -504,7 +505,7 @@ def test_post_stays_busy_while_another_request_is_handing_off(tmp_path):
 
 def test_stale_claim_from_a_crashed_request_becomes_retryable(db):
     q = FakeQueue()
-    post = _run(steps.start_create(db, q, LONG_BRIEF, None))
+    post = _run(steps.start_create(db, q, LONG_BRIEF, None, owner_id=LOCAL_USER_ID))
     stale = json.loads(post.active_step) | {"claimed_at": "2020-01-01T00:00:00+00:00"}
     post.active_step = json.dumps(stale)
     db.commit()

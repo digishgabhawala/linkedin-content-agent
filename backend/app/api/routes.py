@@ -265,18 +265,19 @@ def _serialize_feedback(fb) -> dict:
     }
 
 
-def _idle_post_or_409(db: Session, post_id: str) -> Post:
+def _idle_post_or_409(db: Session, post_id: str, user: AuthUser) -> Post:
     """Plain (non-compute) actions must not change a post mid-step."""
-    post = _post_or_404(db, post_id)
+    post = _post_or_404(db, post_id, user)
     if post.active_step:
         raise HTTPException(status_code=409, detail=f"post {post_id} is busy with a step -- "
                             "wait for it to finish")
     return post
 
 
-def _post_or_404(db: Session, post_id: str) -> Post:
+def _post_or_404(db: Session, post_id: str, user: AuthUser) -> Post:
+    """Another owner's post is 404 too: nothing reveals what exists."""
     post = db.get(Post, post_id)
-    if post is None:
+    if post is None or post.owner_id != user.id:
         raise HTTPException(status_code=404, detail=f"post {post_id} not found")
     return post
 
@@ -515,18 +516,21 @@ def lock_hero_candidate(character_id: str, candidate_id: str,
 
 @router.post("/posts")
 async def create_post(req: CreatePostRequest, db: Session = Depends(get_db),
-                      client: httpx.AsyncClient = Depends(get_llm_client)):
+                      client: httpx.AsyncClient = Depends(get_llm_client),
+        user: AuthUser = Depends(current_user)):
     # Compute actions only submit their first step and return at once; status
     # checks (GET) advance the post step by step -- see services/steps.py.
-    post = await _step_action(steps.start_create(db, client, req.brief, req.character_id))
+    post = await _step_action(steps.start_create(
+        db, client, req.brief, req.character_id, owner_id=user.id))
     return _serialize_post(post)
 
 
 @router.get("/posts")
 async def list_posts(db: Session = Depends(get_db),
-                     client: httpx.AsyncClient = Depends(get_http_client)):
+                     client: httpx.AsyncClient = Depends(get_http_client),
+        user: AuthUser = Depends(current_user)):
     posts = []
-    for p in ps.list_posts(db):
+    for p in ps.list_posts(db, owner_id=user.id):
         try:
             p = await steps.advance(db, client, p)
         except Exception:  # noqa: BLE001 -- one bad post must not hide the list
@@ -537,34 +541,38 @@ async def list_posts(db: Session = Depends(get_db),
 
 @router.get("/posts/{post_id}")
 async def get_post(post_id: str, db: Session = Depends(get_db),
-                   client: httpx.AsyncClient = Depends(get_http_client)):
-    post = await steps.advance(db, client, _post_or_404(db, post_id))
+                   client: httpx.AsyncClient = Depends(get_http_client),
+        user: AuthUser = Depends(current_user)):
+    post = await steps.advance(db, client, _post_or_404(db, post_id, user))
     return _serialize_post(post)
 
 
 @router.post("/posts/{post_id}/clarify")
 async def clarify(post_id: str, req: ClarifyRequest, db: Session = Depends(get_db),
-                  client: httpx.AsyncClient = Depends(get_llm_client)):
-    _post_or_404(db, post_id)
+                  client: httpx.AsyncClient = Depends(get_llm_client),
+        user: AuthUser = Depends(current_user)):
+    _post_or_404(db, post_id, user)
     return _serialize_post(await _step_action(
         steps.start_clarify_answer(db, client, post_id, req.answer)))
 
 
 @router.post("/posts/{post_id}/additional-info")
 async def additional_info(post_id: str, req: AdditionalInfoRequest, db: Session = Depends(get_db),
-                          client: httpx.AsyncClient = Depends(get_llm_client)):
+                          client: httpx.AsyncClient = Depends(get_llm_client),
+        user: AuthUser = Depends(current_user)):
     """Human's response to a needs_input escalation -- unbounded, unlike the
     automatic recalibration loop."""
-    _post_or_404(db, post_id)
+    _post_or_404(db, post_id, user)
     return _serialize_post(await _step_action(
         steps.start_additional_info(db, client, post_id, req.info)))
 
 
 @router.post("/posts/{post_id}/accept-draft")
-def accept_draft(post_id: str, db: Session = Depends(get_db)):
+def accept_draft(post_id: str, db: Session = Depends(get_db),
+        user: AuthUser = Depends(current_user)):
     """Human's call to proceed with the current best draft despite an
     escalation notice -- the human is always the final gate."""
-    _idle_post_or_409(db, post_id)
+    _idle_post_or_409(db, post_id, user)
     try:
         post = ps.accept_current_draft(db, post_id)
     except ps.PostServiceError as e:
@@ -574,48 +582,55 @@ def accept_draft(post_id: str, db: Session = Depends(get_db)):
 
 @router.post("/posts/{post_id}/draft")
 async def redraft(post_id: str, db: Session = Depends(get_db),
-                  client: httpx.AsyncClient = Depends(get_llm_client)):
-    _post_or_404(db, post_id)
+                  client: httpx.AsyncClient = Depends(get_llm_client),
+        user: AuthUser = Depends(current_user)):
+    _post_or_404(db, post_id, user)
     return _serialize_post(await _step_action(steps.start_redraft(db, client, post_id)))
 
 
 @router.post("/posts/{post_id}/regenerate")
 async def regenerate(post_id: str, req: RegenerateRequest, db: Session = Depends(get_db),
-                     client: httpx.AsyncClient = Depends(get_llm_client)):
-    _post_or_404(db, post_id)
+                     client: httpx.AsyncClient = Depends(get_llm_client),
+        user: AuthUser = Depends(current_user)):
+    _post_or_404(db, post_id, user)
     return _serialize_post(await _step_action(
         steps.start_regenerate(db, client, post_id, req.instruction)))
 
 
 @router.get("/posts/{post_id}/drafts")
-def get_drafts(post_id: str, db: Session = Depends(get_db)):
-    _post_or_404(db, post_id)
+def get_drafts(post_id: str, db: Session = Depends(get_db),
+        user: AuthUser = Depends(current_user)):
+    _post_or_404(db, post_id, user)
     return [_serialize_draft(d) for d in ps.list_drafts(db, post_id)]
 
 
 @router.post("/posts/{post_id}/feedback")
-def add_feedback(post_id: str, req: FeedbackRequest, db: Session = Depends(get_db)):
-    _post_or_404(db, post_id)
+def add_feedback(post_id: str, req: FeedbackRequest, db: Session = Depends(get_db),
+        user: AuthUser = Depends(current_user)):
+    _post_or_404(db, post_id, user)
     fb = fs.create_feedback(db, post_id, req.stage, req.user_note, req.post_text_snippet)
     return _serialize_feedback(fb)
 
 
 @router.get("/posts/{post_id}/feedback")
-def get_feedback(post_id: str, db: Session = Depends(get_db)):
-    _post_or_404(db, post_id)
+def get_feedback(post_id: str, db: Session = Depends(get_db),
+        user: AuthUser = Depends(current_user)):
+    _post_or_404(db, post_id, user)
     return [_serialize_feedback(fb) for fb in fs.list_feedback(db, post_id)]
 
 
 @router.post("/posts/{post_id}/lock")
 async def lock(post_id: str, db: Session = Depends(get_db),
-               client: httpx.AsyncClient = Depends(get_llm_client)):
-    _post_or_404(db, post_id)
+               client: httpx.AsyncClient = Depends(get_llm_client),
+        user: AuthUser = Depends(current_user)):
+    _post_or_404(db, post_id, user)
     return _serialize_post(await _step_action(steps.start_lock(db, client, post_id)))
 
 
 @router.patch("/posts/{post_id}/scene")
-def update_scene(post_id: str, req: SceneUpdateRequest, db: Session = Depends(get_db)):
-    _idle_post_or_409(db, post_id)
+def update_scene(post_id: str, req: SceneUpdateRequest, db: Session = Depends(get_db),
+        user: AuthUser = Depends(current_user)):
+    _idle_post_or_409(db, post_id, user)
     try:
         post = ps.update_scene(db, post_id, req.scene_instruction)
     except ps.PostServiceError as e:
@@ -624,8 +639,9 @@ def update_scene(post_id: str, req: SceneUpdateRequest, db: Session = Depends(ge
 
 
 @router.patch("/posts/{post_id}/backdrop")
-def set_post_backdrop(post_id: str, req: PostBackdropRequest, db: Session = Depends(get_db)):
-    _idle_post_or_409(db, post_id)
+def set_post_backdrop(post_id: str, req: PostBackdropRequest, db: Session = Depends(get_db),
+        user: AuthUser = Depends(current_user)):
+    _idle_post_or_409(db, post_id, user)
     try:
         post = ps.set_post_scene_asset(db, post_id, req.scene_asset_name)
     except ps.PostServiceError as e:
@@ -634,8 +650,9 @@ def set_post_backdrop(post_id: str, req: PostBackdropRequest, db: Session = Depe
 
 
 @router.post("/posts/{post_id}/scene/use-latest-backdrop")
-def use_latest_backdrop(post_id: str, db: Session = Depends(get_db)):
-    _idle_post_or_409(db, post_id)
+def use_latest_backdrop(post_id: str, db: Session = Depends(get_db),
+        user: AuthUser = Depends(current_user)):
+    _idle_post_or_409(db, post_id, user)
     try:
         post = ps.use_latest_scene_asset(db, post_id)
     except ps.PostServiceError as e:
@@ -646,23 +663,26 @@ def use_latest_backdrop(post_id: str, db: Session = Depends(get_db)):
 @router.post("/posts/{post_id}/generate-image")
 async def generate_image(post_id: str, req: GenerateImageRequest | None = None,
                          db: Session = Depends(get_db),
-                         client: httpx.AsyncClient = Depends(get_http_client)):
-    _post_or_404(db, post_id)
+                         client: httpx.AsyncClient = Depends(get_http_client),
+        user: AuthUser = Depends(current_user)):
+    _post_or_404(db, post_id, user)
     return _serialize_post(await _step_action(
         steps.start_image(db, client, post_id, profile=req.profile if req else "full")))
 
 
 @router.post("/posts/{post_id}/retry-step")
 async def retry_step(post_id: str, db: Session = Depends(get_db),
-                     client: httpx.AsyncClient = Depends(get_llm_client)):
+                     client: httpx.AsyncClient = Depends(get_llm_client),
+        user: AuthUser = Depends(current_user)):
     """Resubmit the step that failed -- the user's call, never automatic."""
-    _post_or_404(db, post_id)
+    _post_or_404(db, post_id, user)
     return _serialize_post(await _step_action(steps.retry_step(db, client, post_id)))
 
 
 @router.post("/posts/{post_id}/finalize")
-def finalize(post_id: str, db: Session = Depends(get_db)):
-    _idle_post_or_409(db, post_id)
+def finalize(post_id: str, db: Session = Depends(get_db),
+        user: AuthUser = Depends(current_user)):
+    _idle_post_or_409(db, post_id, user)
     try:
         post = ps.finalize_post(db, post_id)
     except ps.PostServiceError as e:

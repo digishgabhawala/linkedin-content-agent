@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, timezone
 
+from app.auth import LOCAL_USER_ID
 from app.db.models import Post
 from app.services.image_service import (
     image_failure_kind,
@@ -11,6 +12,7 @@ from app.services.image_service import (
 
 def test_queue_wait_does_not_count_as_render_stall():
     post = Post(
+        owner_id=LOCAL_USER_ID,
         status="image_queued",
         image_started_at=datetime.utcnow() - timedelta(hours=2),
     )
@@ -23,6 +25,7 @@ def test_queue_wait_does_not_count_as_render_stall():
 
 def test_render_stall_is_measured_from_claim_time():
     post = Post(
+        owner_id=LOCAL_USER_ID,
         status="image_queued",
         image_started_at=datetime.utcnow() - timedelta(hours=2),
     )
@@ -41,7 +44,7 @@ def test_render_stall_is_measured_from_claim_time():
 
 
 def _claimed(lease):
-    post = Post(status="image_queued")
+    post = Post(owner_id=LOCAL_USER_ID, status="image_queued")
     post.image_queue_status = "claimed"
     post.image_lease_expires_at = lease
     return post
@@ -73,21 +76,21 @@ def test_worker_lost_only_applies_to_claimed_tasks():
 
 
 def test_failure_kind_corrupt_output():
-    post = Post(status="image_failed",
+    post = Post(owner_id=LOCAL_USER_ID, status="image_failed",
                 image_job_error="corrupt_output: ComfyUI returned a blank/uniform image")
     assert image_failure_kind(post) == "corrupt_output"
 
 
 def test_failure_kind_none_for_other_errors():
-    assert image_failure_kind(Post(status="image_failed",
+    assert image_failure_kind(Post(owner_id=LOCAL_USER_ID, status="image_failed",
                                    image_job_error="Command returned exit status 1")) is None
-    assert image_failure_kind(Post(status="image_failed", image_job_error=None)) is None
-    assert image_failure_kind(Post(status="image_ready",
+    assert image_failure_kind(Post(owner_id=LOCAL_USER_ID, status="image_failed", image_job_error=None)) is None
+    assert image_failure_kind(Post(owner_id=LOCAL_USER_ID, status="image_ready",
                                    image_job_error="corrupt_output: stale")) is None
 
 
 def test_failure_kind_insufficient_memory():
-    post = Post(status="image_failed",
+    post = Post(owner_id=LOCAL_USER_ID, status="image_failed",
                 image_job_error="insufficient_memory: full quality needs 14 GB free")
     assert image_failure_kind(post) == "insufficient_memory"
 

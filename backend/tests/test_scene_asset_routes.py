@@ -1,3 +1,4 @@
+from app.auth import LOCAL_USER_ID
 from app.db.database import get_db
 from app.db.models import Post
 from app.main import app
@@ -11,6 +12,7 @@ def _post_pinned_to_office(api) -> str:
         "setting_detail": "a bright open-plan office",
     })
     post = Post(
+        owner_id=LOCAL_USER_ID,
         brief="A useful post",
         status="image_ready",
         scene_instruction="reviewing notes, @office, focused",

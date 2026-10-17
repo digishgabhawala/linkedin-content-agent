@@ -465,8 +465,10 @@ def _record_failure(db: Session, post: Post, step: str, ctx: dict, error: str) -
 # Each validates, records the user's input, submits the FIRST step, returns.
 
 
-async def start_create(db: Session, client, brief: str, character_id: str | None) -> Post:
-    post = Post(character_id=character_id or settings.default_character_id, brief=brief,
+async def start_create(db: Session, client, brief: str, character_id: str | None, *,
+                       owner_id: str) -> Post:
+    post = Post(owner_id=owner_id,
+                character_id=character_id or settings.default_character_id, brief=brief,
                 status="clarifying", clarify_transcript=json.dumps([]))
     db.add(post)
     return await _begin(db, client, post, "category", {})
