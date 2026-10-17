@@ -12,7 +12,7 @@ import type {
   LockHeroCandidateResult,
   WriterProfile,
 } from './types'
-import { API_BASE, getAccessToken, notifyUnauthorized } from './auth'
+import { API_BASE, getAccessToken, isAccountRefusal, notifyRefused, notifyUnauthorized } from './auth'
 import { ApiError } from './errors'
 
 async function req<T>(path: string, opts?: RequestInit): Promise<T> {
@@ -23,6 +23,7 @@ async function req<T>(path: string, opts?: RequestInit): Promise<T> {
   if (res.status === 401) notifyUnauthorized()
   if (!res.ok) {
     const err = await res.json().catch(() => ({}))
+    if (res.status === 403 && isAccountRefusal(err.reason)) notifyRefused(err.reason)
     const message = typeof err.detail === 'string' ? err.detail : `Request failed: ${res.status}`
     throw new ApiError(message, res.status, typeof err.reason === 'string' ? err.reason : null)
   }
