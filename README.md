@@ -400,6 +400,9 @@ version:
   design (see CONTENT_QUALITY_DESIGN.md) -- the shape supports adding a
   second profile as a second file later, but there's no config/storage
   layer for N profiles yet.
+- **Writer profile templates.** Let each user define their profile from a
+  choice of templates. Today new users start from the admin's own
+  `user_profile.md`; replace that with a few neutral templates to pick from.
 - **Smaller stored images.** Renders are ~0.9 MB 1024x1024 PNGs; saving
   them as WebP (done in the worker before upload) would cut that ~5x.
   Not urgent: Supabase free tier's 1 GB holds ~1,000 images and we expect
