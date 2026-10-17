@@ -198,7 +198,6 @@ nothing is written to a fixed system path.
 | `DATABASE_URL` | *(unset -> SQLite at `DB_PATH`)* | where the app's data lives -- any SQLAlchemy URL, e.g. the Supabase pooler `postgresql+psycopg://...:6543/postgres` |
 | `DB_SCHEMA` | `linkedin` | Postgres schema for this app's tables (keeps them apart from other apps in the same Supabase project); ignored for SQLite |
 | `DB_PATH` | `posts.db` | SQLite file used only when `DATABASE_URL` is unset |
-| `DEFAULT_CHARACTER_ID` | `gtee_dev` | which character-forge-v2 character to use -- see note below |
 | `CLARIFY_MAX_TURNS` | `5` | hard cap on clarify questions -- a safety valve, not the real quality gate (see "Content quality pipeline" below) |
 | `TASK_QUEUE_URL` | `http://127.0.0.1:8000` | canonical queue product URL; production uses `https://ai-bharatiya-web.vercel.app/queue`, which maps to `/api/queue` automatically |
 | `IMAGE_STALL_TIMEOUT_MINUTES` | `40` | flags an unusually long queue wait or render runtime separately; render time starts only when a worker claims the task (independent of the task-queue lease/reclaim mechanism) |
@@ -230,15 +229,21 @@ queue artifacts into this same durable bucket:
 ```bash
 cd backend
 SUPABASE_URL=https://<project-ref>.supabase.co SUPABASE_SERVICE_KEY=<service key> \
-  .venv/bin/python scripts/sync_character.py gtee_dev
+  .venv/bin/python scripts/sync_character.py gtee_dev --owner-email <owner's platform email>
+# uploads to characters/<owner id>/gtee_dev/hero.png and tags the row with that owner
 # --forge-path defaults to ../../character-forge-v2, --bucket to STORAGE_BUCKET or "linkedin"
 ```
 
 Without a row, drafts lack the mascot's voice and placeholder; rendering
 falls back to the legacy worker-local Character Forge workspace.
 
-**On `DEFAULT_CHARACTER_ID`:** this is a character's permanent, stable ID
-(e.g. `gtee_dev`) -- not a hero-candidate filename like `hero_3000.png`.
+**Which character a post uses.** Characters belong to one user. A new post
+uses the `character_id` it was given (it must be the user's own), otherwise
+the user's most recently updated character with a locked hero, otherwise
+none: text steps run without one, and the image card asks the user to pick
+one (`PATCH /posts/{id}/character`). A `character_id` is a character's
+permanent, stable, globally unique ID (e.g. `gtee_dev`) -- not a
+hero-candidate filename like `hero_3000.png`.
 Those are two different things in character-forge-v2: during character
 creation, several candidate hero images get generated with seed-based
 filenames (`hero_1000.png`, `hero_1003.png`, ...) purely so you can compare
