@@ -237,11 +237,18 @@ SUPABASE_URL=https://<project-ref>.supabase.co SUPABASE_SERVICE_KEY=<service key
 Without a row, drafts lack the mascot's voice and placeholder; rendering
 falls back to the legacy worker-local Character Forge workspace.
 
+**Onboarding: Profile -> Mascot -> first post.** A new user first writes
+their writer profile, then creates a mascot (a character with a locked hero)
+in Character Studio; only then can they create posts. `POST /posts` refuses
+with 409 `profile_required`, then 409 `character_required`, and the new-post
+screen shows the matching guidance instead of the brief form.
+
 **Which character a post uses.** Characters belong to one user. A new post
-uses the `character_id` it was given (it must be the user's own), otherwise
-the user's most recently updated character with a locked hero, otherwise
-none: text steps run without one, and the image card asks the user to pick
-one (`PATCH /posts/{id}/character`). A `character_id` is a character's
+uses the `character_id` it was given (it must be the user's own and have a
+locked hero), otherwise the user's most recently updated character with a
+locked hero; with several, the new-post form offers a picker. Posts created
+before this rule may have no character: their image card asks the user to
+pick one (`PATCH /posts/{id}/character`). A `character_id` is a character's
 permanent, stable, globally unique ID (e.g. `gtee_dev`) -- not a
 hero-candidate filename like `hero_3000.png`.
 Those are two different things in character-forge-v2: during character
