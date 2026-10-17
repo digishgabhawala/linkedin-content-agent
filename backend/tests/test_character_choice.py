@@ -95,3 +95,27 @@ def test_picking_needs_an_owned_character_with_a_locked_hero(api, users):
     assert api.patch(pick, json={"character_id": "not_mine"}).status_code == 404
     resp = api.patch(pick, json={"character_id": "no_hero"})
     assert resp.status_code == 409 and resp.json()["reason"] == "character_required"
+
+
+def test_picking_a_character_is_409_while_the_post_is_rendering_or_busy(api, users):
+    """Same rule as the other post actions: no changes mid-render/mid-step."""
+    import json
+
+    from app.db.models import Post
+    users("user-a")
+    _character(api, "user-a", "mine")
+    _character(api, "user-a", "other")
+    with api.session_factory() as s:
+        s.add(Post(id="queued", owner_id="user-a", brief="b", status="image_queued",
+                   scene_instruction="waving", seed=1, character_id="mine"))
+        s.add(Post(id="busy", owner_id="user-a", brief="b", status="locked",
+                   scene_instruction="waving", seed=1, character_id="mine",
+                   active_step=json.dumps({"name": "image", "task_id": "t1",
+                                           "started_at": "2026-10-17T00:00:00Z"})))
+        s.commit()
+    for post_id in ("queued", "busy"):
+        resp = api.patch(f"{API}/posts/{post_id}/character", json={"character_id": "other"})
+        assert resp.status_code == 409, post_id
+    with api.session_factory() as s:
+        assert s.get(Post, "queued").character_id == "mine"
+        assert s.get(Post, "busy").character_id == "mine"
