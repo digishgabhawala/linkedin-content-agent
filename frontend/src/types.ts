@@ -15,7 +15,7 @@ export interface PillarScore {
 
 export interface Post {
   id: string
-  character_id: string
+  character_id: string | null // null until the owner picks one (needed only for the image)
   brief: string
   status: PostStatus
   pending_question: string | null

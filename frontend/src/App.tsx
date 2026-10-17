@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
 import { api } from './api'
 import { usePostPolling } from './hooks/usePostPolling'
-import type { ImageReadiness, Post, RendererStatus } from './types'
+import type { Character, ImageReadiness, Post, RendererStatus } from './types'
 import { BriefForm } from './components/BriefForm'
 import { ClarifyChat } from './components/ClarifyChat'
 import { DraftPanel } from './components/DraftPanel'
@@ -59,6 +59,22 @@ export default function App() {
   const [journeyActivity, setJourneyActivity] = useState<string | null>(null)
   const [rendererStatus, setRendererStatus] = useState<RendererStatus | null>(null)
   const [onboarding, setOnboarding] = useState(false)
+  const [characters, setCharacters] = useState<Character[]>([])
+  const [characterRequired, setCharacterRequired] = useState(false)
+  const needsCharacter = !!post && post.status === 'locked'
+    && (post.character_id === null || characterRequired)
+
+  // The image card offers the owner's characters only when the post needs one.
+  useEffect(() => {
+    if (!needsCharacter) return
+    let active = true
+    api.listCharacters().then(list => { if (active) setCharacters(list) }).catch(() => {})
+    return () => { active = false }
+  }, [needsCharacter])
+
+  useEffect(() => {
+    setCharacterRequired(false)
+  }, [post?.id])
 
   useEffect(() => {
     refreshHistory()
@@ -247,6 +263,26 @@ export default function App() {
     if (updated) setPost(updated)
   }
 
+  /** 409 character_required: show the character choice instead of an alert. */
+  function characterRequiredShown(e: unknown): boolean {
+    // Only the locked post's image card has the choice; elsewhere the alert stays.
+    if (e instanceof ApiError && e.reason === 'character_required' && post?.status === 'locked') {
+      setCharacterRequired(true)
+      return true
+    }
+    return false
+  }
+
+  async function handleSetCharacter(characterId: string) {
+    if (!post) return
+    const p = await run(() => api.setPostCharacter(post.id, characterId), undefined,
+      'Choosing the character…')
+    if (p) {
+      setCharacterRequired(false)
+      setPost(p)
+    }
+  }
+
   async function handleGenerateImage() {
     if (!post) return
     setImageError(null)
@@ -263,6 +299,7 @@ export default function App() {
         setShowMemoryDialog(true)
       }
     } catch (e: unknown) {
+      if (characterRequiredShown(e)) return
       const msg = e instanceof Error ? e.message : 'Could not check image-render memory'
       setImageError(msg)
       alert(msg)
@@ -286,6 +323,10 @@ export default function App() {
         setPost(p)
       }
     } catch (e: unknown) {
+      if (characterRequiredShown(e)) {
+        setShowMemoryDialog(false)
+        return
+      }
       alert(e instanceof Error ? e.message : 'Could not rescan memory')
     } finally {
       setBusy(false)
@@ -304,6 +345,10 @@ export default function App() {
       setShowMemoryDialog(false)
       setPost(p)
     } catch (e: unknown) {
+      if (characterRequiredShown(e)) {
+        setShowMemoryDialog(false)
+        return
+      }
       alert(e instanceof Error ? e.message : 'Could not start image generation')
     } finally {
       setBusy(false)
@@ -518,6 +563,9 @@ export default function App() {
             <>
               <LockAndScene
                 post={post}
+                characters={characters}
+                characterRequired={characterRequired}
+                onSetCharacter={handleSetCharacter}
                 onUpdateScene={handleUpdateScene}
                 onBackdropChange={handleBackdropChange}
                 onUseLatestBackdrop={handleUseLatestBackdrop}
