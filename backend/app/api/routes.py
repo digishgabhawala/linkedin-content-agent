@@ -292,7 +292,7 @@ def _post_usage_summary(post: Post) -> dict:
 
 
 def _serialize_scene_asset(asset: SceneAsset, db: Session) -> dict:
-    usage = ps.scene_asset_usage_posts(db, asset.name)
+    usage = ps.scene_asset_usage_posts(db, asset.name, owner_id=asset.owner_id)
     return {
         "name": asset.name,
         "display_name": asset.display_name or asset.name.replace("_", " ").capitalize(),
@@ -306,7 +306,8 @@ def _serialize_scene_asset(asset: SceneAsset, db: Session) -> dict:
 
 
 def _serialize_scene_asset_version(version: SceneAssetVersion, db: Session) -> dict:
-    usage = ps.scene_asset_usage_posts(db, version.scene_asset_name, version.id)
+    usage = ps.scene_asset_usage_posts(db, version.scene_asset_name, version.id,
+                                       owner_id=version.owner_id)
     return {
         "id": version.id,
         "scene_asset_name": version.scene_asset_name,
@@ -691,71 +692,80 @@ def finalize(post_id: str, db: Session = Depends(get_db),
 
 
 @router.get("/scene-assets")
-def list_scene_assets(include_archived: bool = False, db: Session = Depends(get_db)):
+def list_scene_assets(include_archived: bool = False, db: Session = Depends(get_db),
+        user: AuthUser = Depends(current_user)):
     return [
         _serialize_scene_asset(asset, db)
-        for asset in ps.list_scene_assets(db, include_archived=include_archived)
+        for asset in ps.list_scene_assets(db, owner_id=user.id, include_archived=include_archived)
     ]
 
 
 @router.post("/scene-assets", status_code=201)
-def create_scene_asset(req: SceneAssetCreateRequest, db: Session = Depends(get_db)):
+def create_scene_asset(req: SceneAssetCreateRequest, db: Session = Depends(get_db),
+        user: AuthUser = Depends(current_user)):
     try:
-        asset = ps.create_scene_asset(db, req.display_name, req.detail_text)
+        asset = ps.create_scene_asset(db, req.display_name, req.detail_text, owner_id=user.id)
     except ps.PostServiceError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return _serialize_scene_asset(asset, db)
 
 
 @router.patch("/scene-assets/{name}")
-def update_scene_asset(name: str, req: SceneAssetUpdateRequest, db: Session = Depends(get_db)):
+def update_scene_asset(name: str, req: SceneAssetUpdateRequest, db: Session = Depends(get_db),
+        user: AuthUser = Depends(current_user)):
     try:
-        asset = ps.update_scene_asset(db, name, req.detail_text, req.display_name)
+        asset = ps.update_scene_asset(db, name, req.detail_text, req.display_name,
+                                      owner_id=user.id)
     except ps.PostServiceError as e:
         raise HTTPException(status_code=404, detail=str(e))
     return _serialize_scene_asset(asset, db)
 
 
 @router.get("/scene-assets/{name}/versions")
-def list_scene_asset_versions(name: str, db: Session = Depends(get_db)):
+def list_scene_asset_versions(name: str, db: Session = Depends(get_db),
+        user: AuthUser = Depends(current_user)):
     return [
         _serialize_scene_asset_version(version, db)
-        for version in ps.list_scene_asset_versions(db, name)
+        for version in ps.list_scene_asset_versions(db, name, owner_id=user.id)
     ]
 
 
 @router.post("/scene-assets/{name}/versions/{version}/restore")
-def restore_scene_asset_version(name: str, version: int, db: Session = Depends(get_db)):
+def restore_scene_asset_version(name: str, version: int, db: Session = Depends(get_db),
+        user: AuthUser = Depends(current_user)):
     try:
-        asset = ps.restore_scene_asset_version(db, name, version)
+        asset = ps.restore_scene_asset_version(db, name, version, owner_id=user.id)
     except ps.PostServiceError as e:
         raise HTTPException(status_code=404, detail=str(e))
     return _serialize_scene_asset(asset, db)
 
 
 @router.post("/scene-assets/{name}/archive")
-def archive_scene_asset(name: str, db: Session = Depends(get_db)):
+def archive_scene_asset(name: str, db: Session = Depends(get_db),
+        user: AuthUser = Depends(current_user)):
     try:
-        asset = ps.archive_scene_asset(db, name)
+        asset = ps.archive_scene_asset(db, name, owner_id=user.id)
     except ps.PostServiceError as e:
         raise HTTPException(status_code=404, detail=str(e))
     return _serialize_scene_asset(asset, db)
 
 
 @router.post("/scene-assets/{name}/unarchive")
-def unarchive_scene_asset(name: str, db: Session = Depends(get_db)):
+def unarchive_scene_asset(name: str, db: Session = Depends(get_db),
+        user: AuthUser = Depends(current_user)):
     try:
-        asset = ps.unarchive_scene_asset(db, name)
+        asset = ps.unarchive_scene_asset(db, name, owner_id=user.id)
     except ps.PostServiceError as e:
         raise HTTPException(status_code=404, detail=str(e))
     return _serialize_scene_asset(asset, db)
 
 
 @router.delete("/scene-assets/{name}")
-def delete_scene_asset(name: str, db: Session = Depends(get_db)):
+def delete_scene_asset(name: str, db: Session = Depends(get_db),
+        user: AuthUser = Depends(current_user)):
     """Backward-compatible archive behavior for older clients."""
     try:
-        ps.delete_scene_asset(db, name)
+        ps.delete_scene_asset(db, name, owner_id=user.id)
     except ps.PostServiceError as e:
         raise HTTPException(status_code=404, detail=str(e))
     return {"status": "archived"}

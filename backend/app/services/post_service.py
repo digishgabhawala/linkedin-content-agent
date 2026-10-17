@@ -171,17 +171,18 @@ def _display_name(name: str) -> str:
 _REF_PATTERN = re.compile(r"@([a-z0-9_]+)")
 
 
-def _next_scene_asset_version(db: Session, name: str) -> int:
+def _next_scene_asset_version(db: Session, name: str, *, owner_id: str) -> int:
     latest = db.query(func.max(SceneAssetVersion.version)).filter(
+        SceneAssetVersion.owner_id == owner_id,
         SceneAssetVersion.scene_asset_name == name).scalar()
     return (latest or 0) + 1
 
 
 def _create_scene_asset_version(
-    db: Session, name: str, version: int, detail_text: str,
+    db: Session, name: str, version: int, detail_text: str, *, owner_id: str,
 ) -> SceneAssetVersion:
     revision = SceneAssetVersion(
-        scene_asset_name=name, version=version, detail_text=detail_text)
+        owner_id=owner_id, scene_asset_name=name, version=version, detail_text=detail_text)
     db.add(revision)
     db.flush()
     return revision
@@ -189,17 +190,25 @@ def _create_scene_asset_version(
 
 def _current_scene_asset_version(db: Session, asset: SceneAsset) -> SceneAssetVersion:
     revision = db.query(SceneAssetVersion).filter(
+        SceneAssetVersion.owner_id == asset.owner_id,
         SceneAssetVersion.scene_asset_name == asset.name,
         SceneAssetVersion.version == asset.current_version,
     ).first()
     if revision is None:
         revision = _create_scene_asset_version(
-            db, asset.name, asset.current_version, asset.detail_text)
+            db, asset.name, asset.current_version, asset.detail_text, owner_id=asset.owner_id)
     return revision
 
 
+def _owned_asset(db: Session, name: str, owner_id: str, *, active_only: bool = False):
+    query = db.query(SceneAsset).filter(SceneAsset.owner_id == owner_id, SceneAsset.name == name)
+    if active_only:
+        query = query.filter(SceneAsset.archived_at.is_(None))
+    return query.first()
+
+
 def _resolve_scene_asset(
-    db: Session, scene: dict,
+    db: Session, scene: dict, *, owner_id: str,
 ) -> tuple[str | None, str | None, str | None]:
     """scene_agent only ever PROPOSES a setting name + detail text -- this
     decides whether to reuse an existing SceneAsset (persisting a brand new
@@ -218,20 +227,22 @@ def _resolve_scene_asset(
     in which case the raw one-off setting_detail is returned as-is (nothing
     to reference by name -- see scene_agent's minimal-grounding docs for why
     this is never dropped even for unnamed metaphor scenes). The third return
-    value pins the immutable backdrop revision used by this post."""
+    value pins the immutable backdrop revision used by this post. Only the
+    post owner's backdrops are reused or created (owner_id)."""
     name = scene.get("setting_name")
     if not name:
         return scene.get("setting_detail"), None, None
     slug = _slugify(str(name))
     if not slug:
         return scene.get("setting_detail"), None, None
-    existing = db.query(SceneAsset).filter(SceneAsset.name == slug).first()
+    existing = _owned_asset(db, slug, owner_id)
     if not existing:
         detail = scene.get("setting_detail")
         if not detail:
             return None, None, None
-        version = _next_scene_asset_version(db, slug)
+        version = _next_scene_asset_version(db, slug, owner_id=owner_id)
         existing = SceneAsset(
+            owner_id=owner_id,
             name=slug,
             display_name=_display_name(slug),
             detail_text=detail,
@@ -239,7 +250,7 @@ def _resolve_scene_asset(
         )
         db.add(existing)
         db.flush()
-        revision = _create_scene_asset_version(db, slug, version, detail)
+        revision = _create_scene_asset_version(db, slug, version, detail, owner_id=owner_id)
     elif existing.archived_at is not None:
         # Archived backdrops are retained for history but no longer reused by
         # the scene agent. Its proposed detail remains a one-off setting.
@@ -263,25 +274,27 @@ def expand_scene_refs(
     scene_instruction: str,
     pinned_asset_name: str | None = None,
     pinned_version_id: str | None = None,
+    *,
+    owner_id: str,
 ) -> str:
     """Expand every "@name" just before the image task is submitted.
 
     The post's primary backdrop uses its pinned immutable revision. Other
     unpinned references use the active version. A missing unpinned asset is
     dropped rather than leaving a stray "@" token for the image model, and
-    resulting punctuation/whitespace is cleaned up.
+    resulting punctuation/whitespace is cleaned up. Only owner_id's (the post
+    owner's) backdrops are used.
     """
     pinned = db.get(SceneAssetVersion, pinned_version_id) if pinned_version_id else None
+    if pinned is not None and pinned.owner_id != owner_id:
+        pinned = None
     if pinned_version_id and pinned is None:
         raise PostServiceError(f"backdrop version {pinned_version_id!r} not found")
 
     def _replace(m: re.Match) -> str:
         if pinned is not None and m.group(1) == pinned_asset_name:
             return pinned.detail_text
-        asset = db.query(SceneAsset).filter(
-            SceneAsset.name == m.group(1),
-            SceneAsset.archived_at.is_(None),
-        ).first()
+        asset = _owned_asset(db, m.group(1), owner_id, active_only=True)
         return asset.detail_text if asset else ""
 
     expanded = _REF_PATTERN.sub(_replace, scene_instruction)
@@ -304,10 +317,7 @@ def update_scene(db: Session, post_id: str, scene_instruction: str) -> Post:
             f"post {post_id} scene can't be edited mid-render (status={post.status})")
     post.scene_instruction = scene_instruction
     match = _REF_PATTERN.search(scene_instruction)
-    asset = (db.query(SceneAsset).filter(
-        SceneAsset.name == match.group(1),
-        SceneAsset.archived_at.is_(None),
-    ).first()
+    asset = (_owned_asset(db, match.group(1), post.owner_id, active_only=True)
              if match else None)
     if asset is None:
         post.scene_asset_name = None
@@ -325,14 +335,16 @@ def update_scene(db: Session, post_id: str, scene_instruction: str) -> Post:
     return post
 
 
-def list_scene_assets(db: Session, include_archived: bool = False) -> list[SceneAsset]:
-    query = db.query(SceneAsset)
+def list_scene_assets(db: Session, *, owner_id: str,
+                      include_archived: bool = False) -> list[SceneAsset]:
+    query = db.query(SceneAsset).filter(SceneAsset.owner_id == owner_id)
     if not include_archived:
         query = query.filter(SceneAsset.archived_at.is_(None))
     return query.order_by(SceneAsset.display_name.asc(), SceneAsset.name.asc()).all()
 
 
-def create_scene_asset(db: Session, display_name: str, detail_text: str) -> SceneAsset:
+def create_scene_asset(db: Session, display_name: str, detail_text: str, *,
+                       owner_id: str) -> SceneAsset:
     label = display_name.strip()
     detail = detail_text.strip()
     name = _slugify(label)
@@ -342,13 +354,14 @@ def create_scene_asset(db: Session, display_name: str, detail_text: str) -> Scen
         raise PostServiceError("backdrop identifier must be 64 characters or fewer")
     if not detail:
         raise PostServiceError("backdrop description is required")
-    existing = db.query(SceneAsset).filter(SceneAsset.name == name).first()
+    existing = _owned_asset(db, name, owner_id)
     if existing is not None:
         state = "archived" if existing.archived_at is not None else "active"
         raise PostServiceError(
             f"backdrop @{name} already exists and is {state}; choose a different name")
-    version = _next_scene_asset_version(db, name)
+    version = _next_scene_asset_version(db, name, owner_id=owner_id)
     asset = SceneAsset(
+        owner_id=owner_id,
         name=name,
         display_name=label,
         detail_text=detail,
@@ -356,7 +369,7 @@ def create_scene_asset(db: Session, display_name: str, detail_text: str) -> Scen
     )
     db.add(asset)
     db.flush()
-    _create_scene_asset_version(db, name, version, detail)
+    _create_scene_asset_version(db, name, version, detail, owner_id=owner_id)
     db.commit()
     db.refresh(asset)
     return asset
@@ -367,8 +380,10 @@ def update_scene_asset(
     name: str,
     detail_text: str,
     display_name: str | None = None,
+    *,
+    owner_id: str,
 ) -> SceneAsset:
-    asset = db.query(SceneAsset).filter(SceneAsset.name == name).first()
+    asset = _owned_asset(db, name, owner_id)
     if asset is None:
         raise PostServiceError(f"scene asset {name!r} not found")
     detail = detail_text.strip()
@@ -385,8 +400,8 @@ def update_scene_asset(
             db.commit()
             db.refresh(asset)
         return asset
-    version = _next_scene_asset_version(db, name)
-    _create_scene_asset_version(db, name, version, detail)
+    version = _next_scene_asset_version(db, name, owner_id=owner_id)
+    _create_scene_asset_version(db, name, version, detail, owner_id=owner_id)
     asset.detail_text = detail
     asset.current_version = version
     db.commit()
@@ -394,23 +409,25 @@ def update_scene_asset(
     return asset
 
 
-def list_scene_asset_versions(db: Session, name: str) -> list[SceneAssetVersion]:
+def list_scene_asset_versions(db: Session, name: str, *,
+                              owner_id: str) -> list[SceneAssetVersion]:
     return db.query(SceneAssetVersion).filter(
+        SceneAssetVersion.owner_id == owner_id,
         SceneAssetVersion.scene_asset_name == name,
     ).order_by(SceneAssetVersion.version.desc()).all()
 
 
 def scene_asset_usage_posts(
-    db: Session, name: str, version_id: str | None = None,
+    db: Session, name: str, version_id: str | None = None, *, owner_id: str,
 ) -> list[Post]:
-    query = db.query(Post).filter(Post.scene_asset_name == name)
+    query = db.query(Post).filter(Post.owner_id == owner_id, Post.scene_asset_name == name)
     if version_id is not None:
         query = query.filter(Post.scene_asset_version_id == version_id)
     return query.order_by(Post.updated_at.desc(), Post.created_at.desc()).all()
 
 
-def archive_scene_asset(db: Session, name: str) -> SceneAsset:
-    asset = db.query(SceneAsset).filter(SceneAsset.name == name).first()
+def archive_scene_asset(db: Session, name: str, *, owner_id: str) -> SceneAsset:
+    asset = _owned_asset(db, name, owner_id)
     if asset is None:
         raise PostServiceError(f"scene asset {name!r} not found")
     if asset.archived_at is None:
@@ -420,8 +437,8 @@ def archive_scene_asset(db: Session, name: str) -> SceneAsset:
     return asset
 
 
-def unarchive_scene_asset(db: Session, name: str) -> SceneAsset:
-    asset = db.query(SceneAsset).filter(SceneAsset.name == name).first()
+def unarchive_scene_asset(db: Session, name: str, *, owner_id: str) -> SceneAsset:
+    asset = _owned_asset(db, name, owner_id)
     if asset is None:
         raise PostServiceError(f"scene asset {name!r} not found")
     if asset.archived_at is not None:
@@ -431,18 +448,21 @@ def unarchive_scene_asset(db: Session, name: str) -> SceneAsset:
     return asset
 
 
-def restore_scene_asset_version(db: Session, name: str, version: int) -> SceneAsset:
-    asset = db.query(SceneAsset).filter(SceneAsset.name == name).first()
+def restore_scene_asset_version(db: Session, name: str, version: int, *,
+                                owner_id: str) -> SceneAsset:
+    asset = _owned_asset(db, name, owner_id)
     if asset is None:
         raise PostServiceError(f"scene asset {name!r} not found")
     historical = db.query(SceneAssetVersion).filter(
+        SceneAssetVersion.owner_id == owner_id,
         SceneAssetVersion.scene_asset_name == name,
         SceneAssetVersion.version == version,
     ).first()
     if historical is None:
         raise PostServiceError(f"scene asset {name!r} version {version} not found")
-    next_version = _next_scene_asset_version(db, name)
-    _create_scene_asset_version(db, name, next_version, historical.detail_text)
+    next_version = _next_scene_asset_version(db, name, owner_id=owner_id)
+    _create_scene_asset_version(db, name, next_version, historical.detail_text,
+                                owner_id=owner_id)
     asset.detail_text = historical.detail_text
     asset.current_version = next_version
     asset.archived_at = None
@@ -474,10 +494,7 @@ def set_post_scene_asset(db: Session, post_id: str, name: str | None) -> Post:
         post.scene_asset_name = None
         post.scene_asset_version_id = None
     else:
-        asset = db.query(SceneAsset).filter(
-            SceneAsset.name == name,
-            SceneAsset.archived_at.is_(None),
-        ).first()
+        asset = _owned_asset(db, name, post.owner_id, active_only=True)
         if asset is None:
             raise PostServiceError(f"active scene asset {name!r} not found")
         scene = _clean_scene_refs(scene, old_name)
@@ -505,10 +522,7 @@ def use_latest_scene_asset(db: Session, post_id: str) -> Post:
             f"post {post_id} backdrop can't be changed mid-render (status={post.status})")
     if not post.scene_asset_name:
         raise PostServiceError(f"post {post_id} does not reference a recurring backdrop")
-    asset = db.query(SceneAsset).filter(
-        SceneAsset.name == post.scene_asset_name,
-        SceneAsset.archived_at.is_(None),
-    ).first()
+    asset = _owned_asset(db, post.scene_asset_name, post.owner_id, active_only=True)
     if asset is None:
         raise PostServiceError(f"scene asset {post.scene_asset_name!r} is no longer active")
     post.scene_asset_version_id = _current_scene_asset_version(db, asset).id
@@ -519,9 +533,9 @@ def use_latest_scene_asset(db: Session, post_id: str) -> Post:
     return post
 
 
-def delete_scene_asset(db: Session, name: str) -> None:
+def delete_scene_asset(db: Session, name: str, *, owner_id: str) -> None:
     """Backward-compatible alias: old clients now archive instead of deleting."""
-    archive_scene_asset(db, name)
+    archive_scene_asset(db, name, owner_id=owner_id)
 
 
 def finalize_post(db: Session, post_id: str) -> Post:

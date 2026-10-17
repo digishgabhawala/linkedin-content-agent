@@ -10,7 +10,7 @@ def _post_pinned_to_office(api) -> str:
     _, _, version_id = _resolve_scene_asset(session, {
         "setting_name": "office",
         "setting_detail": "a bright open-plan office",
-    })
+    }, owner_id=LOCAL_USER_ID)
     post = Post(
         owner_id=LOCAL_USER_ID,
         brief="A useful post",
