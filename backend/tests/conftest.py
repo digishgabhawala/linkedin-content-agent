@@ -64,5 +64,21 @@ def api():
     app.dependency_overrides[get_db] = db
     app.dependency_overrides[routes.get_http_client] = client
     app.dependency_overrides[routes.get_llm_client] = client
+    tc.session_factory = Session
     yield tc
     app.dependency_overrides.clear()
+
+
+@pytest.fixture()
+def users(api):
+    """switch(user_id) signs the test client in as that user (auth checks
+    bypassed): both the router-level dependency and route parameters see it."""
+    from app.auth import AuthUser, current_user
+    from app.main import app
+    state = {"user": AuthUser(id="user-a", email="user-a@example.com")}
+    app.dependency_overrides[current_user] = lambda: state["user"]
+
+    def switch(user_id: str) -> AuthUser:
+        state["user"] = AuthUser(id=user_id, email=f"{user_id}@example.com")
+        return state["user"]
+    return switch

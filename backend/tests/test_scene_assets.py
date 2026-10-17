@@ -1,3 +1,4 @@
+from app.auth import LOCAL_USER_ID
 from app.db.models import Post, SceneAsset, SceneAssetVersion
 from app.services.post_service import (
     _assemble_scene_text,
@@ -126,7 +127,7 @@ def test_manual_scene_reference_is_pinned_and_can_explicitly_use_latest(db_sessi
     _, _, v1_id = _resolve_scene_asset(db_session, {
         "setting_name": "office", "setting_detail": "v1 description",
     })
-    post = Post(brief="b", status="locked", scene_instruction="standing")
+    post = Post(owner_id=LOCAL_USER_ID, brief="b", status="locked", scene_instruction="standing")
     db_session.add(post)
     db_session.commit()
 
@@ -146,6 +147,7 @@ def test_manual_scene_reference_is_pinned_and_can_explicitly_use_latest(db_sessi
 
 def test_scene_edit_after_render_requires_a_fresh_render(db_session):
     post = Post(
+        owner_id=LOCAL_USER_ID,
         brief="b", status="image_ready", scene_instruction="standing",
         final_image_path="https://example.test/old.png",
     )
@@ -200,6 +202,7 @@ def test_manual_creation_and_historical_restore_append_versions(db_session):
 def test_selecting_and_clearing_post_backdrop_updates_scene_and_pin(db_session):
     create_scene_asset(db_session, "Home Desk", "a focused desk")
     post = Post(
+        owner_id=LOCAL_USER_ID,
         brief="b", status="image_ready",
         scene_instruction="reviewing notes, @office, focused",
         scene_asset_name="office",

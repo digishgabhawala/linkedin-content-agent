@@ -59,8 +59,9 @@ def get_post(db: Session, post_id: str) -> Post:
     return post
 
 
-def list_posts(db: Session) -> list[Post]:
-    return db.query(Post).order_by(Post.created_at.desc()).all()
+def list_posts(db: Session, *, owner_id: str) -> list[Post]:
+    return (db.query(Post).filter(Post.owner_id == owner_id)
+            .order_by(Post.created_at.desc()).all())
 
 
 def list_drafts(db: Session, post_id: str) -> list[PostDraft]:

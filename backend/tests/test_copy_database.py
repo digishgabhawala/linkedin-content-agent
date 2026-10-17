@@ -4,6 +4,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.auth import LOCAL_USER_ID
 from app.db.copy import TargetNotEmpty, copy_database
 from app.db.database import build_engine, init_db
 from app.db.models import (
@@ -22,7 +23,7 @@ def _seed(url):
     engine = build_engine(url, "linkedin")
     init_db(engine, "linkedin")
     with Session(engine) as s:
-        post = Post(id="p1", character_id="gtee_dev", brief="brief", status="image_ready",
+        post = Post(owner_id=LOCAL_USER_ID, id="p1", character_id="gtee_dev", brief="brief", status="image_ready",
                     image_profile="lightning", final_image_path="https://x/y.png",
                     scene_asset_name="office", scene_asset_version_id="sv1",
                     created_at=datetime(2026, 10, 1, 9, 30))  # noqa: DTZ001 -- naive UTC, like every DB column

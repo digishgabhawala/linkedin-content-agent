@@ -1,6 +1,7 @@
 """HTTP layer: compute actions acknowledge at once; status checks advance."""
 import httpx
 
+from app.auth import LOCAL_USER_ID
 from app.db.database import get_db
 from app.main import app
 from tests.test_steps import LONG_BRIEF, FakeQueue
@@ -64,7 +65,7 @@ def test_plain_actions_are_refused_while_a_step_runs(api):
 def test_every_compute_action_acknowledges_with_its_first_step(api):
     from app.db.models import Post
     session = next(app.dependency_overrides[get_db]())
-    drafting = Post(character_id="gtee_dev", brief=LONG_BRIEF, status="drafting", post_text="p",
+    drafting = Post(owner_id=LOCAL_USER_ID, character_id="gtee_dev", brief=LONG_BRIEF, status="drafting", post_text="p",
                     clarify_transcript="[]", category="lessons_learned")
     session.add(drafting)
     session.commit()
@@ -79,7 +80,7 @@ def test_every_compute_action_acknowledges_with_its_first_step(api):
 def test_accept_draft_clears_a_stale_retry(api):
     from app.db.models import Post
     session = next(app.dependency_overrides[get_db]())
-    post = Post(character_id="gtee_dev", brief="b", status="needs_input", post_text="p",
+    post = Post(owner_id=LOCAL_USER_ID, character_id="gtee_dev", brief="b", status="needs_input", post_text="p",
                 clarify_transcript="[]", step_error="expired: x",
                 step_context='{"automatic": true, "_retry": "judge"}')
     session.add(post)
