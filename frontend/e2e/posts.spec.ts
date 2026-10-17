@@ -139,3 +139,67 @@ test.describe('Posts workspace', () => {
     await page.screenshot({ path: testInfo.outputPath(`posts-active-${suffix}.png`), fullPage: true })
   })
 })
+
+test.describe('posts without a character', () => {
+  const lockedPost = { ...demoPost, status: 'locked', character_id: null, scene_instruction: 'waving' }
+
+  async function mockLockedPost(page: Page, onPatch?: (characterId: string) => void) {
+    await page.route('**/api/linkedin/posts**', async r => {
+      const pathname = new URL(r.request().url()).pathname
+      if (r.request().method() === 'PATCH' && pathname.endsWith('/character')) {
+        const characterId = r.request().postDataJSON().character_id
+        onPatch?.(characterId)
+        return r.fulfill({ json: { ...lockedPost, character_id: characterId } })
+      }
+      if (pathname.endsWith('/posts')) return r.fulfill({ json: [lockedPost] })
+      if (pathname.endsWith('/drafts') || pathname.endsWith('/feedback')) return r.fulfill({ json: [] })
+      return r.fulfill({ json: lockedPost })
+    })
+  }
+
+  test('points to Character Studio when the user has no character', async ({ page }) => {
+    await mockLockedPost(page)
+    await page.route('**/api/linkedin/characters', r => r.fulfill({ json: [] }))
+    await page.goto(`#posts?post=${lockedPost.id}`)
+    await expect(page.getByText('Choose a character for this image')).toBeVisible()
+    await expect(page.getByRole('link', { name: 'Open Character Studio' })).toHaveAttribute('href', '#characters')
+    await expect(page.getByRole('button', { name: 'Generate image' })).toBeDisabled()
+  })
+
+  test('lets the user pick one of their characters', async ({ page }) => {
+    let patched = ''
+    await mockLockedPost(page, id => { patched = id })
+    await page.route('**/api/linkedin/characters', r => r.fulfill({ json: [
+      { character_id: 'asha_bot', display_name: 'Asha Bot', hero_image_url: 'https://h/x.png' },
+      { character_id: 'draft_bot', display_name: 'No hero yet', hero_image_url: null }] }))
+    await page.goto(`#posts?post=${lockedPost.id}`)
+    const picker = page.getByRole('combobox', { name: 'Character' })
+    await expect(picker.locator('option')).toHaveCount(1) // only characters with a locked hero
+    await picker.selectOption('asha_bot')
+    await page.getByRole('button', { name: 'Use this character' }).click()
+    await expect.poll(() => patched).toBe('asha_bot')
+    await expect(page.getByRole('button', { name: 'Generate image' })).toBeEnabled()
+  })
+
+  test('a character_required refusal shows the guidance instead of an alert', async ({ page }) => {
+    const withCharacter = { ...lockedPost, character_id: 'gone_bot' }
+    await page.route('**/api/linkedin/posts**', async r => {
+      const pathname = new URL(r.request().url()).pathname
+      if (pathname.endsWith('/generate-image')) {
+        return r.fulfill({ status: 409, json: { detail: 'Choose a character', reason: 'character_required' } })
+      }
+      if (pathname.endsWith('/posts')) return r.fulfill({ json: [withCharacter] })
+      if (pathname.endsWith('/drafts') || pathname.endsWith('/feedback')) return r.fulfill({ json: [] })
+      return r.fulfill({ json: withCharacter })
+    })
+    await page.route('**/api/linkedin/characters', r => r.fulfill({ json: [] }))
+    await page.route('**/api/linkedin/resources/image-readiness', r => r.fulfill({ json: {
+      enough_memory: true } }))
+    let alerted = false
+    page.on('dialog', d => { alerted = true; void d.dismiss() })
+    await page.goto(`#posts?post=${lockedPost.id}`)
+    await page.getByRole('button', { name: 'Generate image' }).click()
+    await expect(page.getByRole('link', { name: 'Open Character Studio' })).toBeVisible()
+    expect(alerted).toBe(false)
+  })
+})

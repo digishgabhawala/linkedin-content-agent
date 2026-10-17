@@ -117,6 +117,12 @@ export const api = {
       { method: 'POST' },
     ),
 
+  setPostCharacter: (id: string, character_id: string) =>
+    req<Post>(`/posts/${id}/character`, {
+      method: 'PATCH',
+      body: JSON.stringify({ character_id }),
+    }),
+
   updatePostBackdrop: (id: string, scene_asset_name: string | null) =>
     req<Post>(`/posts/${id}/backdrop`, {
       method: 'PATCH',
