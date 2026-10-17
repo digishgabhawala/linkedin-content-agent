@@ -10,6 +10,7 @@ import type {
   CharacterCardInput,
   HeroGenerationRun,
   LockHeroCandidateResult,
+  WriterProfile,
 } from './types'
 import { API_BASE, getAccessToken, notifyUnauthorized } from './auth'
 import { ApiError } from './errors'
@@ -157,4 +158,9 @@ export const api = {
       `/characters/${encodeURIComponent(characterId)}/hero-candidates/${encodeURIComponent(candidateId)}/lock`,
       { method: 'POST' },
     ),
+
+  getProfile: () => req<WriterProfile>('/profile'),
+
+  saveProfile: (profile_md: string) =>
+    req<WriterProfile>('/profile', { method: 'PUT', body: JSON.stringify({ profile_md }) }),
 }

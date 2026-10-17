@@ -248,3 +248,10 @@ export interface LockHeroCandidateResult {
   character: Character
   candidate: HeroCandidate
 }
+
+export interface WriterProfile {
+  profile_md: string | null
+  is_set: boolean
+  template: string
+  updated_at: string | null
+}
