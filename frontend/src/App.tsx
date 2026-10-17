@@ -337,6 +337,9 @@ export default function App() {
             {session.email && (
               <div className="flex items-center gap-2 text-xs text-gray-600">
                 <span>{session.email}</span>
+                <a href="/account" className="min-h-11 rounded-lg border border-gray-300 px-3 py-2 hover:bg-gray-50">
+                  Account
+                </a>
                 <button onClick={session.signOut} className="min-h-11 rounded-lg border border-gray-300 px-3 py-2 hover:bg-gray-50">
                   Sign out
                 </button>

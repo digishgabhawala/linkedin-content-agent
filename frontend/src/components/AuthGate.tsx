@@ -1,24 +1,53 @@
-import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { API_BASE, authClient, getAccessToken, loadAuthConfig, setUnauthorizedHandler } from '../auth'
-import { SessionContext } from '../session'
+import { LOGIN_URL, SessionContext, signOut } from '../session'
 import { SuiteBrand } from './SuiteBrand'
+
+// Sign-in itself happens on the suite's shared /login page. This gate only
+// decides: no session (or one the backend rejects) -> /login; a signed-in
+// account the backend refuses -> a message, never a redirect (/login would
+// send the user straight back here).
+type Refusal = 'pending' | 'rejected' | 'suspended' | 'no_membership'
 
 type GateState =
   | { kind: 'loading' }
-  | { kind: 'signedOut'; message?: string }
-  | { kind: 'forbidden' }
+  | { kind: 'redirecting' }
+  | { kind: 'refused'; reason: Refusal }
   | { kind: 'unavailable' }
   | { kind: 'ready'; email: string | null }
+
+const REFUSALS: Record<Refusal, string> = {
+  pending: 'Your account is waiting for approval.',
+  rejected: 'Your account was not approved.',
+  suspended: 'Your account is suspended.',
+  no_membership: 'Your account does not have access to LinkedIn Content Agent.',
+}
+
+let redirecting = false // one navigation only: a second one would abort the first
+
+/** Drop the rejected session locally (so /login doesn't bounce back), then go there. */
+async function goToLogin(clearSession: boolean): Promise<GateState> {
+  if (clearSession) await authClient()?.auth.signOut({ scope: 'local' }).catch(() => undefined)
+  if (!redirecting) {
+    redirecting = true
+    window.location.replace(LOGIN_URL)
+  }
+  return { kind: 'redirecting' }
+}
 
 async function checkAccess(): Promise<GateState> {
   try {
     const config = await loadAuthConfig()
     if (!config.enabled) return { kind: 'ready', email: null }
     const token = await getAccessToken()
-    if (!token) return { kind: 'signedOut' }
+    if (!token) return goToLogin(false)
     const res = await fetch(`${API_BASE}/auth/me`, { headers: { Authorization: `Bearer ${token}` } })
-    if (res.status === 401) return { kind: 'signedOut', message: 'Your session expired. Please sign in again.' }
-    if (res.status === 403) return { kind: 'forbidden' }
+    if (res.status === 401) return goToLogin(true)
+    if (res.status === 403) {
+      const body = await res.json().catch(() => ({}))
+      const reason = (body.reason in REFUSALS ? body.reason : 'no_membership') as Refusal
+      return { kind: 'refused', reason }
+    }
     if (!res.ok) return { kind: 'unavailable' }
     return { kind: 'ready', email: (await res.json()).email }
   } catch {
@@ -41,51 +70,6 @@ function Card({ children }: { children: ReactNode }) {
   )
 }
 
-function SignInForm({ message, onSignedIn }: { message?: string; onSignedIn: () => void }) {
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [error, setError] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
-
-  async function submit(e: FormEvent) {
-    e.preventDefault()
-    const client = authClient()
-    if (!client) return
-    setBusy(true)
-    setError(null)
-    const { error: signInError } = await client.auth.signInWithPassword({ email, password })
-    setBusy(false)
-    if (signInError) setError(signInError.message)
-    else onSignedIn()
-  }
-
-  return (
-    <Card>
-      <p className="text-sm text-gray-600">Sign in to continue.</p>
-      {message && <p className="rounded-lg bg-amber-50 border border-amber-100 p-2 text-xs text-amber-800">{message}</p>}
-      <form onSubmit={submit} className="space-y-3">
-        <label className="block text-sm text-gray-700">
-          Email
-          <input type="email" required autoComplete="username" value={email}
-            onChange={e => setEmail(e.target.value)}
-            className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" />
-        </label>
-        <label className="block text-sm text-gray-700">
-          Password
-          <input type="password" required autoComplete="current-password" value={password}
-            onChange={e => setPassword(e.target.value)}
-            className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" />
-        </label>
-        {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
-        <button type="submit" disabled={busy}
-          className="w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">
-          {busy ? 'Signing in…' : 'Sign in'}
-        </button>
-      </form>
-    </Card>
-  )
-}
-
 export function AuthGate({ children }: { children: ReactNode }) {
   const [state, setState] = useState<GateState>({ kind: 'loading' })
 
@@ -94,30 +78,31 @@ export function AuthGate({ children }: { children: ReactNode }) {
     setState(await checkAccess())
   }, [])
 
-  const signOut = useCallback(async () => {
-    await authClient()?.auth.signOut()
-    setState({ kind: 'signedOut' })
-  }, [])
-
   useEffect(() => {
     void refresh()
-    setUnauthorizedHandler(() =>
-      setState({ kind: 'signedOut', message: 'Your session expired. Please sign in again.' }))
+    setUnauthorizedHandler(() => {
+      void goToLogin(true).then(setState)
+    })
     return () => setUnauthorizedHandler(null)
   }, [refresh])
 
   switch (state.kind) {
     case 'loading':
       return <Card><p className="text-sm text-gray-600">Checking sign-in…</p></Card>
-    case 'signedOut':
-      return <SignInForm message={state.message} onSignedIn={refresh} />
-    case 'forbidden':
+    case 'redirecting':
+      return <Card><p className="text-sm text-gray-600">Taking you to sign-in…</p></Card>
+    case 'refused':
       return (
         <Card>
-          <p className="text-sm text-gray-700">This account doesn't have access to LinkedIn Content Agent.</p>
-          <button onClick={signOut} className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50">
-            Sign out
-          </button>
+          <p role="status" className="text-sm text-gray-700">{REFUSALS[state.reason]}</p>
+          <div className="flex flex-wrap items-center gap-3">
+            <a href="/account" className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
+              Your account
+            </a>
+            <button onClick={() => void signOut()} className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50">
+              Sign out
+            </button>
+          </div>
         </Card>
       )
     case 'unavailable':
@@ -131,7 +116,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
       )
     case 'ready':
       return (
-        <SessionContext.Provider value={{ email: state.email, signOut }}>
+        <SessionContext.Provider value={{ email: state.email, signOut: () => void signOut() }}>
           {children}
         </SessionContext.Provider>
       )
