@@ -23,6 +23,7 @@ import httpx
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 
 from .config import settings
 from .db import database
@@ -90,8 +91,12 @@ def _load_access(user_id: str) -> Access:
         uuid.UUID(user_id)
     except ValueError:
         return Access(None, False)
-    with database.engine.connect() as conn:
-        row = conn.execute(_ACCESS_SQL, {"uid": user_id, "app": APP}).first()
+    try:
+        with database.engine.connect() as conn:
+            row = conn.execute(_ACCESS_SQL, {"uid": user_id, "app": APP}).first()
+    except SQLAlchemyError as exc:
+        # An outage, not a refusal: the UI shows "unavailable, retry" on 503.
+        raise HTTPException(503, "Account checks are temporarily unavailable") from exc
     return Access(row.status, bool(row.member)) if row else Access(None, False)
 
 

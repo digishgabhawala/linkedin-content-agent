@@ -14,6 +14,7 @@ from app.config import Settings, settings
 from app.main import app
 
 PUBLIC = {"/api/linkedin/health", "/api/linkedin/auth/config"}
+_REAL_LOAD_ACCESS = auth._load_access  # the supabase fixture swaps it out
 
 
 def _token(exp_in: float = 3600) -> str:
@@ -213,3 +214,32 @@ def test_only_a_rejected_token_is_401(monkeypatch, status, expected):
     with pytest.raises(HTTPException) as exc:
         asyncio.run(auth._fetch_supabase_user("t"))
     assert exc.value.status_code == expected
+
+
+def test_database_error_during_access_check_is_503(api, supabase, monkeypatch):
+    """A DB outage while checking approval/membership is 'unavailable' (503),
+    not a crash (500) -- and never a refusal or a sign-out."""
+    from sqlalchemy.exc import OperationalError
+
+    from app.db import database
+
+    class Dialect:
+        name = "postgresql"
+
+    class BrokenEngine:
+        dialect = Dialect()
+
+        def connect(self):
+            raise OperationalError("select 1", {}, Exception("connection refused"))
+
+    monkeypatch.setattr(database, "engine", BrokenEngine())
+    monkeypatch.setattr(auth, "_load_access", _REAL_LOAD_ACCESS)
+
+    async def fetch(token):
+        return {"id": "00000000-0000-0000-0000-0000000000a1", "email": "a@example.com"}
+
+    monkeypatch.setattr(auth, "_fetch_supabase_user", fetch)
+    resp = _get(api, token=_token())
+    assert resp.status_code == 503
+    assert "unavailable" in resp.json()["detail"].lower()
+
