@@ -142,6 +142,31 @@ test.describe('Posts workspace', () => {
   })
 })
 
+test.describe('Recent posts sidebar', () => {
+  test('shows each post brief as readable text, not only its status', async ({ page }) => {
+    const posts: Post[] = Array.from({ length: 12 }, (_, i) => ({
+      ...demoPost,
+      id: `post-${i}`,
+      brief: `Sidebar brief number ${i} about a shipped improvement`,
+      status: i % 2 ? 'ready' : 'drafting',
+    }))
+    await mockPosts(page, posts)
+    await page.goto('#posts')
+
+    const sidebar = page.getByRole('complementary', { name: 'Recent posts' })
+    await expect(sidebar.getByRole('button')).toHaveCount(12)
+    const briefs = sidebar.locator('.posts-history__brief')
+    for (const i of [0, 1, 11]) {
+      const brief = briefs.nth(i)
+      await brief.scrollIntoViewIfNeeded()
+      await expect(brief).toBeVisible()
+      await expect(brief).toHaveText(`Sidebar brief number ${i} about a shipped improvement`)
+      const box = await brief.boundingBox()
+      expect(box?.height ?? 0).toBeGreaterThan(8)
+    }
+  })
+})
+
 test.describe('posts without a character', () => {
   const lockedPost = { ...demoPost, status: 'locked', character_id: null, scene_instruction: 'waving' }
 
