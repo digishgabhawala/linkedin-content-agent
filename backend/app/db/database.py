@@ -98,6 +98,14 @@ def _postgres(bind: Engine) -> bool:
     return bind.dialect.name == "postgresql"
 
 
+def _set_lock_timeout(conn, bind: Engine) -> None:
+    """Postgres DDL in a migration transaction gives up after _LOCK_TIMEOUT
+    instead of waiting behind the still-serving old app (a waiting ALTER makes
+    every later query on that table wait too). Re-running finishes the job."""
+    if _postgres(bind):
+        conn.execute(text(f"SET LOCAL lock_timeout = '{_LOCK_TIMEOUT}'"))
+
+
 def _q(bind: Engine, schema: str, table: str) -> str:
     """Raw DDL/SQL isn't schema-translated, so qualify the table explicitly."""
     return f'"{schema}".{table}' if _postgres(bind) else table
@@ -113,6 +121,7 @@ def _add_missing_columns(bind: Engine, schema: str, table: str, columns: dict[st
         return
     existing = {c["name"] for c in inspector.get_columns(table, schema=_reflect_schema(bind, schema))}
     with bind.begin() as conn:
+        _set_lock_timeout(conn, bind)
         for column, coltype in columns.items():
             if column not in existing:
                 conn.execute(text(f"ALTER TABLE {_q(bind, schema, table)} "
@@ -146,18 +155,27 @@ def _unowned_counts(conn, bind: Engine, schema: str) -> dict[str, int]:
 
 
 def _backfill_owners(bind: Engine, schema: str, owner: str | None) -> None:
-    """Rows from before multi-user belong to the backfill owner (the admin)."""
+    """Rows from before multi-user belong to the backfill owner (the admin).
+
+    On Postgres, rows the old app made with login off carry the local user
+    ("auth-disabled", e.g. a Character Studio character, or rows copied from
+    a local SQLite): they match no account, so a named backfill owner takes
+    them too. Without one they stay (a Postgres used for local development)."""
     with bind.begin() as conn:
+        _set_lock_timeout(conn, bind)
         counts = _unowned_counts(conn, bind, schema)
         missing = sum(counts.values())
-        if not missing:
-            return
-        if owner is None:
+        if missing and owner is None:
             raise owners.BackfillOwnerMissing(
                 f"{missing} rows have no owner ({counts}): set BACKFILL_OWNER_EMAIL")
+        if owner is None:
+            return
+        local = _postgres(bind) and owner != owners.LOCAL_OWNER_ID
         for table in _OWNED_TABLES:
             conn.execute(text(f"UPDATE {_q(bind, schema, table)} SET owner_id = :owner "
-                              "WHERE owner_id IS NULL"), {"owner": owner})
+                              "WHERE owner_id IS NULL"
+                              + (" OR owner_id = :local" if local else "")),
+                         {"owner": owner, "local": owners.LOCAL_OWNER_ID})
 
 
 def _backfill_scene_asset_versions(bind: Engine, schema: str) -> None:
@@ -239,10 +257,16 @@ def _relax_post_character_id(bind: Engine, schema: str) -> None:
         return
     if _postgres(bind):
         with bind.begin() as conn:
+            _set_lock_timeout(conn, bind)
             conn.execute(text(f"ALTER TABLE {_q(bind, schema, 'posts')} "
                               "ALTER COLUMN character_id DROP NOT NULL"))
     else:
         _rebuild_sqlite_table(bind, "posts")
+
+
+# How long a migration DDL statement waits for a table lock before giving up
+# (the old app may still be serving; a waiting ALTER would stall its queries).
+_LOCK_TIMEOUT = "15s"
 
 
 # table -> (old unique columns, new constraint name, new unique columns)
@@ -265,6 +289,7 @@ def _owner_scoped_uniques(bind: Engine, schema: str) -> None:
                 _rebuild_sqlite_table(bind, table)
             continue
         with bind.begin() as conn:
+            _set_lock_timeout(conn, bind)
             # Add the new constraint before dropping the old one, so the
             # table is never without a uniqueness rule.
             if not has_new:
@@ -286,14 +311,18 @@ def _require_owner_not_null(bind: Engine, schema: str, owner: str | None) -> Non
     if not _postgres(bind):
         return
     with bind.begin() as conn:
-        conn.execute(text("SET LOCAL lock_timeout = '15s'"))
-        for table in _OWNED_TABLES:
-            column = next(c for c in inspect(conn).get_columns(table, schema=schema)
-                          if c["name"] == "owner_id")
-            if not column["nullable"]:
-                continue
+        _set_lock_timeout(conn, bind)
+        pending = [table for table in _OWNED_TABLES
+                   if next(c for c in inspect(conn).get_columns(table, schema=schema)
+                           if c["name"] == "owner_id")["nullable"]]
+        if not pending:
+            return
+        # All tables in one statement: locking them one by one could deadlock
+        # with the old app's scene step (writes backdrops, then the post).
+        conn.execute(text("LOCK TABLE " + ", ".join(_q(bind, schema, t) for t in pending)
+                          + " IN SHARE ROW EXCLUSIVE MODE"))
+        for table in pending:
             q = _q(bind, schema, table)
-            conn.execute(text(f"LOCK TABLE {q} IN SHARE ROW EXCLUSIVE MODE"))
             if owner is not None:
                 conn.execute(text(f"UPDATE {q} SET owner_id = :owner WHERE owner_id IS NULL"),
                              {"owner": owner})
@@ -306,6 +335,7 @@ def _create_owner_indexes(bind: Engine, schema: str) -> None:
     if not {"owner_id", "created_at"} <= columns:
         return  # only in hand-made test tables; real ones always have created_at
     with bind.begin() as conn:
+        _set_lock_timeout(conn, bind)
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_posts_owner_created ON "
                           f"{_q(bind, schema, 'posts')} (owner_id, created_at)"))
 

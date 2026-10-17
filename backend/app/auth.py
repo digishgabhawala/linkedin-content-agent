@@ -125,8 +125,11 @@ async def _fetch_supabase_user(token: str) -> dict:
                                              "Authorization": f"Bearer {token}"})
     except httpx.HTTPError as exc:
         raise HTTPException(503, "Identity service is temporarily unavailable") from exc
-    if resp.status_code != 200:
+    if resp.status_code in (400, 401, 403):  # the token itself was rejected
         raise _unauthorized()
+    if resp.status_code != 200:
+        # Rate limit / outage: not a sign-out (the UI would clear the session).
+        raise HTTPException(503, "Identity service is temporarily unavailable")
     return resp.json()
 
 

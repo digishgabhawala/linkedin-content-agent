@@ -188,3 +188,28 @@ def test_access_needs_postgres():
     with pytest.raises(HTTPException) as exc:
         auth._load_access("00000000-0000-0000-0000-000000000000")
     assert exc.value.status_code == 503
+
+
+@pytest.mark.parametrize("status,expected", [(400, 401), (401, 401), (403, 401), (429, 503), (500, 503),
+                                             (503, 503)])
+def test_only_a_rejected_token_is_401(monkeypatch, status, expected):
+    # A Supabase blip (rate limit, outage) must not look like "signed out": the
+    # UI clears the shared session and sends the user to /login on a 401.
+    class Answer:
+        def __init__(self, *a, **k):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def get(self, *a, **k):
+            return httpx.Response(status, json={})
+
+    monkeypatch.setattr(auth.httpx, "AsyncClient", Answer)
+    import asyncio
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(auth._fetch_supabase_user("t"))
+    assert exc.value.status_code == expected
