@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
-import { API_BASE, authClient, getAccessToken, loadAuthConfig, setUnauthorizedHandler } from '../auth'
+import {
+  API_BASE, authClient, getAccessToken, isAccountRefusal, loadAuthConfig, setRefusedHandler,
+  setUnauthorizedHandler, type AccountRefusal,
+} from '../auth'
 import { LOGIN_URL, SessionContext, signOut } from '../session'
 import { SuiteBrand } from './SuiteBrand'
 
@@ -7,7 +10,7 @@ import { SuiteBrand } from './SuiteBrand'
 // decides: no session (or one the backend rejects) -> /login; a signed-in
 // account the backend refuses -> a message, never a redirect (/login would
 // send the user straight back here).
-type Refusal = 'pending' | 'rejected' | 'suspended' | 'no_membership'
+type Refusal = AccountRefusal
 
 type GateState =
   | { kind: 'loading' }
@@ -45,7 +48,7 @@ async function checkAccess(): Promise<GateState> {
     if (res.status === 401) return goToLogin(true)
     if (res.status === 403) {
       const body = await res.json().catch(() => ({}))
-      const reason = (body.reason in REFUSALS ? body.reason : 'no_membership') as Refusal
+      const reason: Refusal = isAccountRefusal(body.reason) ? body.reason : 'no_membership'
       return { kind: 'refused', reason }
     }
     if (!res.ok) return { kind: 'unavailable' }
@@ -83,7 +86,12 @@ export function AuthGate({ children }: { children: ReactNode }) {
     setUnauthorizedHandler(() => {
       void goToLogin(true).then(setState)
     })
-    return () => setUnauthorizedHandler(null)
+    // Mid-session refusal from any API call: same screen as at sign-in.
+    setRefusedHandler(reason => setState({ kind: 'refused', reason }))
+    return () => {
+      setUnauthorizedHandler(null)
+      setRefusedHandler(null)
+    }
   }, [refresh])
 
   switch (state.kind) {

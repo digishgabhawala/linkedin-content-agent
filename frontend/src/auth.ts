@@ -13,6 +13,15 @@ export interface AuthConfig {
 
 let client: SupabaseClient | null = null
 let unauthorizedHandler: (() => void) | null = null
+let refusedHandler: ((reason: AccountRefusal) => void) | null = null
+
+// Why the backend refuses a signed-in account (403 + `reason`, app/auth.py).
+export const ACCOUNT_REFUSALS = ['pending', 'rejected', 'suspended', 'no_membership'] as const
+export type AccountRefusal = (typeof ACCOUNT_REFUSALS)[number]
+
+export function isAccountRefusal(reason: unknown): reason is AccountRefusal {
+  return typeof reason === 'string' && (ACCOUNT_REFUSALS as readonly string[]).includes(reason)
+}
 
 export async function loadAuthConfig(): Promise<AuthConfig> {
   const res = await fetch(`${API_BASE}/auth/config`, { headers: { Accept: 'application/json' } })
@@ -43,4 +52,14 @@ export function setUnauthorizedHandler(handler: (() => void) | null) {
 
 export function notifyUnauthorized() {
   unauthorizedHandler?.()
+}
+
+// A 403 account refusal on any API call mid-session (approval revoked,
+// account suspended): AuthGate swaps the whole app for its refusal screen.
+export function setRefusedHandler(handler: ((reason: AccountRefusal) => void) | null) {
+  refusedHandler = handler
+}
+
+export function notifyRefused(reason: AccountRefusal) {
+  refusedHandler?.(reason)
 }

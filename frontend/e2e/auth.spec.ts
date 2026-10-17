@@ -42,3 +42,22 @@ for (const [reason, text] of [['pending', 'waiting for approval'], ['rejected', 
     expect(page.url()).toContain('/linkedin/')
   })
 }
+
+// Approval revoked / account suspended while the app is open: the next API
+// call answers 403 with a reason. That must land on the same refusal screen
+// the gate shows, not as scattered error alerts across the workspace.
+for (const [reason, text] of [['suspended', 'Your account is suspended.'],
+  ['no_membership', 'does not have access']]) {
+  test(`a mid-session 403 (${reason}) shows the refusal screen`, async ({ page }) => {
+    await enableAuth(page, { status: 200, body: { email: 'a@example.com' } })
+    await page.route('**/api/linkedin/posts**', r => r.fulfill({ status: 403, json: {
+      detail: 'Access refused', reason } }))
+    await page.goto('#posts')
+    await expect(page.getByText(text)).toBeVisible()
+    await expect(page.getByRole('link', { name: 'Your account' })).toHaveAttribute('href', '/account')
+    await expect(page.getByRole('button', { name: 'Sign out' })).toBeVisible()
+    await expect(page.getByRole('alert')).toHaveCount(0)
+    await expect(page.getByRole('heading', { name: 'Posts', exact: true })).toHaveCount(0)
+    expect(page.url()).toContain('/linkedin/')
+  })
+}
