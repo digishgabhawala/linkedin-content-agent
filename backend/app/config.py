@@ -27,7 +27,6 @@ class Settings(BaseSettings):
     # (local development uses the Vite dev server instead).
     frontend_dist: str = str(_BACKEND_DIR.parent / "frontend" / "dist")
 
-    default_character_id: str = "gtee_dev"
     clarify_max_turns: int = 5
     max_recalibration_passes: int = 3
 

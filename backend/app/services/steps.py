@@ -75,6 +75,10 @@ class BusyError(StepError):
     """The post already has a step in flight."""
 
 
+class CharacterRequired(StepError):
+    """The image needs a character and the post has none yet."""
+
+
 @dataclass(frozen=True)
 class Next:
     step: str
@@ -469,8 +473,7 @@ def _record_failure(db: Session, post: Post, step: str, ctx: dict, error: str) -
 
 async def start_create(db: Session, client, brief: str, character_id: str | None, *,
                        owner_id: str) -> Post:
-    post = Post(owner_id=owner_id,
-                character_id=character_id or settings.default_character_id, brief=brief,
+    post = Post(owner_id=owner_id, character_id=character_id, brief=brief,
                 status="clarifying", clarify_transcript=json.dumps([]))
     db.add(post)
     return await _begin(db, client, post, "category", {})
@@ -532,6 +535,9 @@ async def start_image(db: Session, client, post_id: str, profile: str = "full") 
     _require_idle(post)
     if post.status not in ("locked", "image_failed", "image_ready"):
         raise StepError(f"post {post_id} is not locked or retryable (status={post.status})")
+    if post.character_id is None:
+        raise CharacterRequired("Choose a character for this image first "
+                                "(create one in Character Studio)")
     # A retry/re-roll needs a fresh seed: ComfyUI caches per-node outputs by
     # exact inputs, so the same seed would replay the previous (bad) result.
     if post.status in ("image_failed", "image_ready"):

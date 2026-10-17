@@ -24,11 +24,13 @@ from ..db.models import (
     SceneAsset,
     SceneAssetVersion,
 )
+from ..errors import ReasonedHTTPException
 from ..services import feedback_service as fs
 from ..services import hero_generation as hgs
 from ..services import image_service as isvc
 from ..services import post_service as ps
 from ..services import steps
+from ..services.character_choice import CharacterNotOwned, choose_character
 from ..services.renderer_status_service import (
     hosted_image_readiness,
     hosted_renderer_status,
@@ -89,6 +91,10 @@ class SceneUpdateRequest(BaseModel):
 
 class PostBackdropRequest(BaseModel):
     scene_asset_name: str | None = None
+
+
+class PostCharacterRequest(BaseModel):
+    character_id: str
 
 
 class SceneAssetCreateRequest(BaseModel):
@@ -176,6 +182,8 @@ async def _step_action(action):
         return await action
     except steps.BusyError as e:
         raise HTTPException(status_code=409, detail=str(e))
+    except steps.CharacterRequired as e:  # before StepError, its parent
+        raise ReasonedHTTPException(409, str(e), "character_required") from e
     except steps.StepError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except ps.PostServiceError as e:
@@ -532,8 +540,12 @@ async def create_post(req: CreatePostRequest, db: Session = Depends(get_db),
         user: AuthUser = Depends(current_user)):
     # Compute actions only submit their first step and return at once; status
     # checks (GET) advance the post step by step -- see services/steps.py.
+    try:
+        character_id = choose_character(db, owner_id=user.id, requested=req.character_id)
+    except CharacterNotOwned as e:
+        raise HTTPException(404, str(e)) from e
     post = await _step_action(steps.start_create(
-        db, client, req.brief, req.character_id, owner_id=user.id))
+        db, client, req.brief, character_id, owner_id=user.id))
     return _serialize_post(post)
 
 
@@ -658,6 +670,28 @@ def set_post_backdrop(post_id: str, req: PostBackdropRequest, db: Session = Depe
         post = ps.set_post_scene_asset(db, post_id, req.scene_asset_name)
     except ps.PostServiceError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    return _serialize_post(post)
+
+
+@router.patch("/posts/{post_id}/character")
+def set_post_character(post_id: str, req: PostCharacterRequest, db: Session = Depends(get_db),
+                       user: AuthUser = Depends(current_user)):
+    """Pick the character for a post's image (one of the owner's, with a
+    locked hero). A rendered image no longer matches, so it needs a fresh one."""
+    post = _idle_post_or_409(db, post_id, user)
+    if post.status == "ready":
+        raise HTTPException(400, f"post {post_id} is finished")
+    character = _character_or_404(db, req.character_id, user)
+    if not character.hero_image_url:
+        raise ReasonedHTTPException(
+            409, f"character {req.character_id!r} has no locked hero yet", "character_required")
+    if post.character_id != character.character_id:
+        post.character_id = character.character_id
+        if post.status in ("image_ready", "image_failed"):
+            post.status = "locked"
+            post.image_job_error = None
+        db.commit()
+        db.refresh(post)
     return _serialize_post(post)
 
 
