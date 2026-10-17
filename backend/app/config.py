@@ -58,6 +58,10 @@ class Settings(BaseSettings):
     # it bypasses every Supabase protection. Never expose it to the frontend.
     supabase_service_key: str = ""
     storage_bucket: str = "linkedin"
+    # Migration only (scripts/init_db.py): the platform account (email in
+    # platform.profiles) that owns rows created before multi-user. Needed
+    # only while rows without an owner exist.
+    backfill_owner_email: str = ""
     # How long a verified token is trusted before Supabase is asked again
     # (never past the token's own expiry). The UI polls every few seconds.
     auth_cache_minutes: float = 15
