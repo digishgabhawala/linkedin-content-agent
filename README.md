@@ -400,6 +400,9 @@ version:
   design (see CONTENT_QUALITY_DESIGN.md) -- the shape supports adding a
   second profile as a second file later, but there's no config/storage
   layer for N profiles yet.
+- **Posts sidebar hides post text.** In "Recent posts" each entry shows only
+  its status: the brief line (`.posts-history__brief` in `HistorySidebar.tsx`
+  / `index.css`) renders 0px tall. CSS layout bug, found 2026-10-17.
 - **Writer profile templates.** Let each user define their profile from a
   choice of templates. Today new users start from the admin's own
   `user_profile.md`; replace that with a few neutral templates to pick from.
