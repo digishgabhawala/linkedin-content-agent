@@ -722,6 +722,8 @@ def set_post_character(post_id: str, req: PostCharacterRequest, db: Session = De
     post = _idle_post_or_409(db, post_id, user)
     if post.status == "ready":
         raise HTTPException(400, f"post {post_id} is finished")
+    if post.status == "image_queued":
+        raise HTTPException(409, f"post {post_id} is rendering -- wait for the image to finish")
     character = _character_or_404(db, req.character_id, user)
     if not character.hero_image_url:
         raise ReasonedHTTPException(
