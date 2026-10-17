@@ -18,21 +18,26 @@ import { ImageMemoryDialog } from './components/ImageMemoryDialog'
 import { JourneyProgress } from './components/JourneyProgress'
 import { RendererStatusBadge } from './components/RendererStatusBadge'
 import { useSession } from './session'
+import { ApiError } from './errors'
 import { SuiteBrand } from './components/SuiteBrand'
 import { StepStatus } from './components/StepStatus'
 
 const CharacterStudio = lazy(() =>
   import('./components/CharacterStudio').then((module) => ({ default: module.CharacterStudio })),
 )
+const ProfilePage = lazy(() =>
+  import('./components/ProfilePage').then((module) => ({ default: module.ProfilePage })),
+)
 const BackdropsPage = lazy(() =>
   import('./components/BackdropsPage').then((module) => ({ default: module.BackdropsPage })),
 )
 
-type AppView = 'posts' | 'characters' | 'backdrops'
+type AppView = 'posts' | 'characters' | 'backdrops' | 'profile'
 
 function viewFromHash(): AppView {
   if (window.location.hash.startsWith('#characters')) return 'characters'
   if (window.location.hash.startsWith('#backdrops')) return 'backdrops'
+  if (window.location.hash.startsWith('#profile')) return 'profile'
   return 'posts'
 }
 
@@ -53,9 +58,24 @@ export default function App() {
   const [showMemoryDialog, setShowMemoryDialog] = useState(false)
   const [journeyActivity, setJourneyActivity] = useState<string | null>(null)
   const [rendererStatus, setRendererStatus] = useState<RendererStatus | null>(null)
+  const [onboarding, setOnboarding] = useState(false)
 
   useEffect(() => {
     refreshHistory()
+  }, [])
+
+  // First use: no writer profile yet -> open the Profile tab with the template.
+  function openOnboarding() {
+    setOnboarding(true)
+    window.location.hash = '#profile'
+  }
+
+  useEffect(() => {
+    let active = true
+    api.getProfile()
+      .then(profile => { if (active && !profile.is_set) openOnboarding() })
+      .catch(() => {})
+    return () => { active = false }
   }, [])
 
   useEffect(() => {
@@ -143,7 +163,17 @@ export default function App() {
   }
 
   async function handleNewBrief(brief: string) {
-    const p = await run(() => api.createPost(brief), undefined, 'Submitting…')
+    const p = await run(async () => {
+      try {
+        return await api.createPost(brief)
+      } catch (e) {
+        if (e instanceof ApiError && e.reason === 'profile_required') {
+          openOnboarding()
+          return undefined
+        }
+        throw e
+      }
+    }, undefined, 'Submitting…')
     if (p) setPost(p)
   }
 
@@ -309,7 +339,8 @@ export default function App() {
       <a className="app-skip-link" href={
         activeView === 'characters'
           ? '#characters-main-content'
-          : activeView === 'backdrops' ? '#backdrops-main-content' : '#posts-main-content'
+          : activeView === 'backdrops' ? '#backdrops-main-content'
+            : activeView === 'profile' ? '#profile-main-content' : '#posts-main-content'
       }>
         Skip to main content
       </a>
@@ -381,6 +412,18 @@ export default function App() {
           >
             Backdrops
           </a>
+          <a
+            href="#profile"
+            aria-current={activeView === 'profile' ? 'page' : undefined}
+            onClick={(event) => {
+              if (characterStudioDirty && activeView === 'characters'
+                && !window.confirm('Discard this unfinished character card?')) {
+                event.preventDefault()
+              }
+            }}
+          >
+            Profile
+          </a>
         </div>
       </nav>
 
@@ -391,6 +434,14 @@ export default function App() {
           </main>
         )}>
           <CharacterStudio onDirtyChange={setCharacterStudioDirty} />
+        </Suspense>
+      ) : activeView === 'profile' ? (
+        <Suspense fallback={(
+          <main id="profile-main-content" className="mx-auto max-w-5xl px-6 py-10">
+            <p role="status" className="text-sm text-gray-600">Loading Profile…</p>
+          </main>
+        )}>
+          <ProfilePage onboarding={onboarding} onSaved={() => setOnboarding(false)} />
         </Suspense>
       ) : activeView === 'backdrops' ? (
         <Suspense fallback={(
