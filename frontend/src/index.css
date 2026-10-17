@@ -209,6 +209,11 @@ a {
 
 .posts-history__list {
   display: grid;
+  /* Rows keep their content height and the list scrolls; without this the
+     capped list squeezes every row and the overflow-hidden brief collapses
+     to 0px, leaving only the status visible. */
+  grid-auto-rows: max-content;
+  align-content: start;
   gap: var(--space-2);
   max-height: min(60vh, 34rem);
   overflow-y: auto;
@@ -241,6 +246,8 @@ a {
 }
 
 .posts-history__brief {
+  min-width: 0;
+  min-height: 1lh;
   overflow: hidden;
   color: var(--color-text-strong);
   font-size: var(--font-size-xs);
