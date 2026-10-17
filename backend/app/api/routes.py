@@ -29,7 +29,7 @@ from ..services import feedback_service as fs
 from ..services import hero_generation as hgs
 from ..services import image_service as isvc
 from ..services import post_service as ps
-from ..services import steps
+from ..services import profile_service, steps
 from ..services.character_choice import CharacterNotOwned, choose_character
 from ..services.renderer_status_service import (
     hosted_image_readiness,
@@ -95,6 +95,20 @@ class PostBackdropRequest(BaseModel):
 
 class PostCharacterRequest(BaseModel):
     character_id: str
+
+
+class WriterProfileRequest(BaseModel):
+    profile_md: str
+
+    @model_validator(mode="after")
+    def _within_limits(self) -> WriterProfileRequest:
+        self.profile_md = self.profile_md.strip()
+        if not self.profile_md:
+            raise ValueError("the writer profile can't be empty")
+        if len(self.profile_md) > profile_service.MAX_PROFILE_CHARS:
+            raise ValueError(f"the writer profile is limited to "
+                             f"{profile_service.MAX_PROFILE_CHARS} characters")
+        return self
 
 
 class SceneAssetCreateRequest(BaseModel):
@@ -405,6 +419,25 @@ def auth_me(user: AuthUser = Depends(current_user)):
     return {"email": user.email, "user_id": user.id}
 
 
+def _serialize_profile(profile) -> dict:
+    return {"profile_md": profile.profile_md if profile else None,
+            "is_set": profile is not None,
+            "template": profile_service.template(),
+            "updated_at": _utc_iso(profile.updated_at) if profile else None}
+
+
+@router.get("/profile")
+def get_writer_profile(db: Session = Depends(get_db),
+                       user: AuthUser = Depends(current_user)):
+    return _serialize_profile(profile_service.get_profile(db, user.id))
+
+
+@router.put("/profile")
+def put_writer_profile(req: WriterProfileRequest, db: Session = Depends(get_db),
+                       user: AuthUser = Depends(current_user)):
+    return _serialize_profile(profile_service.save_profile(db, user.id, req.profile_md))
+
+
 @router.get("/resources/image-readiness")
 async def get_image_readiness(client: httpx.AsyncClient = Depends(get_http_client)):
     return await hosted_image_readiness(client)
@@ -540,6 +573,8 @@ async def create_post(req: CreatePostRequest, db: Session = Depends(get_db),
         user: AuthUser = Depends(current_user)):
     # Compute actions only submit their first step and return at once; status
     # checks (GET) advance the post step by step -- see services/steps.py.
+    if profile_service.get_profile(db, user.id) is None:
+        raise ReasonedHTTPException(409, "Write your writer profile first", "profile_required")
     try:
         character_id = choose_character(db, owner_id=user.id, requested=req.character_id)
     except CharacterNotOwned as e:

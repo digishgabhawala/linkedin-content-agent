@@ -65,6 +65,11 @@ def api():
     app.dependency_overrides[routes.get_http_client] = client
     app.dependency_overrides[routes.get_llm_client] = client
     tc.session_factory = Session
+    from app.auth import LOCAL_USER_ID
+    from app.db.models import WriterProfile
+    with Session() as s:  # the local user has written their profile (onboarding done)
+        s.add(WriterProfile(owner_id=LOCAL_USER_ID, profile_md="I build things."))
+        s.commit()
     yield tc
     app.dependency_overrides.clear()
 
@@ -78,7 +83,13 @@ def users(api):
     state = {"user": AuthUser(id="user-a", email="user-a@example.com")}
     app.dependency_overrides[current_user] = lambda: state["user"]
 
-    def switch(user_id: str) -> AuthUser:
+    def switch(user_id: str, with_profile: bool = True) -> AuthUser:
+        from app.db.models import WriterProfile
         state["user"] = AuthUser(id=user_id, email=f"{user_id}@example.com")
+        if with_profile:
+            with api.session_factory() as s:
+                if s.get(WriterProfile, user_id) is None:
+                    s.add(WriterProfile(owner_id=user_id, profile_md="I build things."))
+                    s.commit()
         return state["user"]
     return switch

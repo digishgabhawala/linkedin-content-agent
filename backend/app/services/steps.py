@@ -29,7 +29,6 @@ from sqlalchemy import update
 from sqlalchemy.orm import Session
 
 from ..agents.category_agent import build_category_request, parse_category
-from ..agents.content_sources import load_user_profile
 from ..agents.draft_agent import (
     build_clarify_request,
     build_draft_request,
@@ -65,6 +64,7 @@ from .post_service import (
     expand_scene_refs,
     get_post,
 )
+from .profile_service import profile_text
 
 
 class StepError(PostServiceError):
@@ -189,14 +189,16 @@ def build(db: Session, post: Post, step: str, ctx: dict):
         return "text", build_clarify_request(post.brief, _transcript(post), post.category)
     if step == "draft":
         return "text", build_draft_request(post.brief, _transcript(post), _personality(post),
-                                           post.category)
+                                           post.category,
+                                           user_profile=profile_text(db, post.owner_id))
     if step == "rewrite":
         return "text", build_rewrite_request(post.post_text, ctx["instruction"],
-                                             _personality(post), post.category)
+                                             _personality(post), post.category,
+                                             user_profile=profile_text(db, post.owner_id))
     if step == "judge":
         return "text", build_judge_request(
             post.post_text, post.brief, _transcript(post), post.category,
-            _personality(post), load_user_profile())
+            _personality(post), profile_text(db, post.owner_id))
     if step == "escalation":
         return "text", build_escalation_request(post.brief, post.category, ctx["failing"])
     if step == "scene":
