@@ -387,6 +387,13 @@ version:
 - [x] Header badge and image progress read hosted task-queue worker status
   (heartbeats, coarse stage, lost-worker detection) instead of a local
   process check.
+- [x] Multiple characters: each user creates their own mascots in Character
+  Studio (no longer just the seeded `gtee_dev`).
+- [x] Per-user writer profiles (`writer_profiles` table, edited on the
+  Profile tab) replace the single `user_profile.md`, which is now the
+  starting template.
+- [x] "Recent posts" sidebar shows each post's brief again (it had collapsed
+  to 0px, leaving only the status).
 
 - **Feedback consumption.** Feedback is captured (stage, note, timestamp)
   but deliberately not yet fed back into prompts or pillar weighting --
@@ -402,14 +409,6 @@ version:
   derivation -- but the original vision of multiple characters with distinct
   POVs (e.g. one that asks security questions, one that asks ROI questions)
   hasn't been built.
-- **Multi-character support beyond the one seeded character (`gtee_dev`).**
-- **Multi-tenant user profiles.** `user_profile.md` is a single file by
-  design (see CONTENT_QUALITY_DESIGN.md) -- the shape supports adding a
-  second profile as a second file later, but there's no config/storage
-  layer for N profiles yet.
-- **Posts sidebar hides post text.** In "Recent posts" each entry shows only
-  its status: the brief line (`.posts-history__brief` in `HistorySidebar.tsx`
-  / `index.css`) renders 0px tall. CSS layout bug, found 2026-10-17.
 - **Writer profile templates.** Let each user define their profile from a
   choice of templates. Today new users start from the admin's own
   `user_profile.md`; replace that with a few neutral templates to pick from.
