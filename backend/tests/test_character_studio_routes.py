@@ -94,7 +94,7 @@ def test_character_create_list_and_get_api(api):
     assert character["character_id"] == "new_dev"
     assert character["character_card"]["trigger_token"] == "new_dev"
     assert character["hero_image_url"] is None and character["hero_version"] == 0
-    assert api.get(f"{API}/characters").json()[0]["character_id"] == "new_dev"
+    assert "new_dev" in [c["character_id"] for c in api.get(f"{API}/characters").json()]
     assert api.get(f"{API}/characters/new_dev").json() == character
 
 

@@ -30,7 +30,11 @@ from ..services import hero_generation as hgs
 from ..services import image_service as isvc
 from ..services import post_service as ps
 from ..services import profile_service, steps
-from ..services.character_choice import CharacterNotOwned, choose_character
+from ..services.character_choice import (
+    CharacterNotOwned,
+    MascotRequired,
+    choose_character,
+)
 from ..services.renderer_status_service import (
     hosted_image_readiness,
     hosted_renderer_status,
@@ -579,6 +583,8 @@ async def create_post(req: CreatePostRequest, db: Session = Depends(get_db),
         character_id = choose_character(db, owner_id=user.id, requested=req.character_id)
     except CharacterNotOwned as e:
         raise HTTPException(404, str(e)) from e
+    except MascotRequired as e:
+        raise ReasonedHTTPException(409, str(e), "character_required") from e
     post = await _step_action(steps.start_create(
         db, client, req.brief, character_id, owner_id=user.id))
     return _serialize_post(post)
