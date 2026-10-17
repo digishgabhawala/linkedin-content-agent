@@ -32,8 +32,9 @@ def _storage(requests, bucket_status=200, upload_status=200):
     return httpx.Client(transport=httpx.MockTransport(handler))
 
 
-def _sync(db, http, forge):
-    return sync_character(db, http, BASE + "/", "service-key", "linkedin", forge, "gtee_dev")
+def _sync(db, http, forge, owner_id="u-admin"):
+    return sync_character(db, http, BASE + "/", "service-key", "linkedin", forge, "gtee_dev",
+                          owner_id=owner_id)
 
 
 def test_uploads_the_hero_then_writes_the_row(db_session, forge):
@@ -42,7 +43,7 @@ def test_uploads_the_hero_then_writes_the_row(db_session, forge):
 
     bucket, upload = requests
     assert json.loads(bucket.content) == {"id": "linkedin", "name": "linkedin", "public": True}
-    assert upload.url == f"{BASE}/storage/v1/object/linkedin/characters/gtee_dev/hero.png"
+    assert upload.url == f"{BASE}/storage/v1/object/linkedin/characters/u-admin/gtee_dev/hero.png"
     assert upload.headers["x-upsert"] == "true"
     assert upload.headers["content-type"] == "image/png"
     assert upload.headers["authorization"] == "Bearer service-key"
@@ -51,7 +52,7 @@ def test_uploads_the_hero_then_writes_the_row(db_session, forge):
     assert json.loads(row.card_json)["character_id"] == "gtee_dev"
     assert row.hero_asset_id.startswith("sha256:") and row.hero_version == 1
     url, _, version = row.hero_image_url.partition("?v=")
-    assert url == f"{BASE}/storage/v1/object/public/linkedin/characters/gtee_dev/hero.png"
+    assert url == f"{BASE}/storage/v1/object/public/linkedin/characters/u-admin/gtee_dev/hero.png"
     assert version == row.hero_asset_id.removeprefix("sha256:")[:16]
 
 
@@ -90,3 +91,18 @@ def test_storage_failure_writes_nothing(db_session, forge, statuses):
     with pytest.raises(SyncError):
         _sync(db_session, _storage([], **statuses), forge)
     assert db_session.query(Character).count() == 0
+
+
+def test_sync_uploads_under_the_owner_folder_and_tags_the_row(db_session, forge):
+    requests = []
+    row = _sync(db_session, _storage(requests), forge, owner_id="u-admin")
+    assert row.owner_id == "u-admin"
+    assert "/characters/u-admin/gtee_dev/hero.png" in str(requests[1].url)
+
+
+def test_sync_refuses_another_owners_character(db_session, forge):
+    _sync(db_session, _storage([]), forge, owner_id="u-admin")
+    requests = []
+    with pytest.raises(SyncError, match="owned by another user"):
+        _sync(db_session, _storage(requests), forge, owner_id="u-other")
+    assert requests == []  # refused before anything was uploaded

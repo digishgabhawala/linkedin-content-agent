@@ -33,3 +33,8 @@ def test_added_columns_use_types_postgres_accepts():
             for column, coltype in getattr(database, name).items():
                 assert coltype.split()[0] in portable or coltype.startswith(portable), \
                     f"{name}.{column}: {coltype}"
+
+
+def test_writes_are_limited_to_the_users_own_folder():
+    creates = [s for s in policy_statements("linkedin") if s.startswith("create policy")]
+    assert all("(storage.foldername(name))[2] = (select auth.uid()::text)" in s for s in creates)

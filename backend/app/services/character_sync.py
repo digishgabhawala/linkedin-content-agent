@@ -23,7 +23,13 @@ class SyncError(Exception):
 
 
 def sync_character(db: Session, http: httpx.Client, supabase_url: str, service_key: str,
-                   bucket: str, forge_path: Path, character_id: str) -> Character:
+                   bucket: str, forge_path: Path, character_id: str, *,
+                   owner_id: str) -> Character:
+    """Uploads to characters/<owner_id>/<character_id>/hero.png and tags the
+    row with owner_id. Refuses a character id another user already owns."""
+    existing = db.get(Character, character_id)
+    if existing is not None and existing.owner_id not in (None, owner_id):
+        raise SyncError(f"character {character_id!r} is owned by another user")
     folder = Path(forge_path) / "workspace" / character_id
     card_path, hero_path = folder / "character.json", folder / "hero.png"
     for path in (card_path, hero_path):
@@ -44,7 +50,7 @@ def sync_character(db: Session, http: httpx.Client, supabase_url: str, service_k
     if resp.status_code != 200 and not exists:
         raise SyncError(f"creating bucket {bucket!r} failed: {resp.status_code} {resp.text}")
 
-    object_path = f"characters/{character_id}/hero.png"
+    object_path = f"characters/{owner_id}/{character_id}/hero.png"
     resp = http.post(f"{base}/storage/v1/object/{bucket}/{object_path}",
                      headers={**auth, "Content-Type": "image/png", "x-upsert": "true"},
                      content=hero_bytes)
@@ -54,7 +60,8 @@ def sync_character(db: Session, http: httpx.Client, supabase_url: str, service_k
     # The row is written only after the upload succeeded. ?v= makes browsers
     # fetch a re-synced hero instead of a cached old one.
     now = datetime.now(timezone.utc)
-    row = db.get(Character, character_id) or Character(character_id=character_id)
+    row = existing or Character(character_id=character_id)
+    row.owner_id = owner_id
     row.display_name = card.get("display_name")
     row.personality = card.get("personality")
     row.card_json = json.dumps(card, separators=(",", ":"), sort_keys=True)
