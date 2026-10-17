@@ -12,6 +12,7 @@ import type {
   LockHeroCandidateResult,
 } from './types'
 import { API_BASE, getAccessToken, notifyUnauthorized } from './auth'
+import { ApiError } from './errors'
 
 async function req<T>(path: string, opts?: RequestInit): Promise<T> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
@@ -21,7 +22,8 @@ async function req<T>(path: string, opts?: RequestInit): Promise<T> {
   if (res.status === 401) notifyUnauthorized()
   if (!res.ok) {
     const err = await res.json().catch(() => ({}))
-    throw new Error(err.detail ?? `Request failed: ${res.status}`)
+    const message = typeof err.detail === 'string' ? err.detail : `Request failed: ${res.status}`
+    throw new ApiError(message, res.status, typeof err.reason === 'string' ? err.reason : null)
   }
   return res.json()
 }
