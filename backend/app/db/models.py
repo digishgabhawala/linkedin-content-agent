@@ -90,8 +90,11 @@ class Post(Base):
     character = relationship(
         "Character", primaryjoin="foreign(Post.character_id) == Character.character_id",
         viewonly=True, lazy="selectin")
+    # Joined on the owner too: two users may each have an "office".
     scene_asset = relationship(
-        "SceneAsset", primaryjoin="foreign(Post.scene_asset_name) == SceneAsset.name",
+        "SceneAsset",
+        primaryjoin="and_(foreign(Post.scene_asset_name) == SceneAsset.name, "
+                    "foreign(Post.owner_id) == SceneAsset.owner_id)",
         viewonly=True, lazy="selectin")
     backdrop_version = relationship(
         "SceneAssetVersion", foreign_keys=[scene_asset_version_id],

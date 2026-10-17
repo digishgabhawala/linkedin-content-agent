@@ -203,7 +203,8 @@ def build(db: Session, post: Post, step: str, ctx: dict):
         return "image", {"character_id": post.character_id,
                          "task": expand_scene_refs(
                              db, post.scene_instruction,
-                             post.scene_asset_name, post.scene_asset_version_id),
+                             post.scene_asset_name, post.scene_asset_version_id,
+                             owner_id=post.owner_id),
                          "seed": post.seed, "profile": ctx.get("profile", "full"),
                          **_remote_character_payload(post)}
     raise ValueError(f"unknown step {step!r}")
@@ -262,7 +263,8 @@ async def apply(db: Session, client, post: Post, step: str, result: dict, ctx: d
         return {}
     if step == "scene":
         scene = parse_scene(content)
-        setting_detail, asset_name, version_id = _resolve_scene_asset(db, scene)
+        setting_detail, asset_name, version_id = _resolve_scene_asset(
+            db, scene, owner_id=post.owner_id)
         post.scene_instruction = _assemble_scene_text(scene, setting_detail)
         post.scene_asset_name = asset_name
         post.scene_asset_version_id = version_id

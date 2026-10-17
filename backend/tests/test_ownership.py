@@ -32,3 +32,18 @@ def test_new_posts_belong_to_their_creator(api, users):
     from app.db.models import Post
     with api.session_factory() as s:
         assert s.get(Post, post_id).owner_id == "user-a"
+
+
+def test_backdrops_are_private_and_names_are_per_owner(api, users):
+    users("user-a")
+    assert api.post(f"{API}/scene-assets", json={"display_name": "Office", "detail_text": "A"}
+                    ).status_code == 201
+    users("user-b")
+    assert api.get(f"{API}/scene-assets?include_archived=true").json() == []
+    assert api.get(f"{API}/scene-assets/office/versions").json() == []
+    for method, path, body in [("patch", "", {"detail_text": "x"}), ("post", "/archive", None),
+                               ("post", "/unarchive", None), ("delete", "", None),
+                               ("post", "/versions/1/restore", None)]:
+        assert api.request(method, f"{API}/scene-assets/office{path}", json=body).status_code == 404
+    assert api.post(f"{API}/scene-assets", json={"display_name": "Office", "detail_text": "B"}
+                    ).status_code == 201
