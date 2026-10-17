@@ -392,7 +392,7 @@ def auth_config():
 
 @router.get("/auth/me")
 def auth_me(user: AuthUser = Depends(current_user)):
-    return {"email": user.email}
+    return {"email": user.email, "user_id": user.id}
 
 
 @router.get("/resources/image-readiness")

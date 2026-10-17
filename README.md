@@ -273,7 +273,8 @@ Environment (Production and Preview; never the browser):
 | `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY` | the shared Supabase project |
 | `SUPABASE_SERVICE_KEY` | server-only service-role key for durable hero-candidate promotion |
 | `STORAGE_BUCKET` | `linkedin` |
-| `AUTH_ALLOWED_EMAILS` | who may sign in (comma list) |
+| `ACCESS_CACHE_SECONDS` | optional, default `60`: how long an account's approval + `linkedin` membership (from the shared `platform` schema) is trusted; keep it at most 60 |
+| `BACKFILL_OWNER_EMAIL` | migration only (`scripts/init_db.py`): the platform account that owns rows created before multi-user; needed only while unowned rows exist |
 | `AUTO_INIT_DB` | `false` -- no schema checks on every cold start |
 
 **Paths.** The app is served at `/linkedin/` and its API at
