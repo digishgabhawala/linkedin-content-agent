@@ -30,11 +30,11 @@ def _seed(url):
         run = HeroGenerationRun(
             id="r1", character_id="gtee_dev", card_json='{"character_id":"gtee_dev"}',
             profile="full", base_seed=1000, requested_candidates=1, status="completed")
-        s.add_all([Character(character_id="gtee_dev", personality="dry humor"),
+        s.add_all([Character(owner_id=LOCAL_USER_ID, character_id="gtee_dev", personality="dry humor"),
                    run, HeroCandidate(id="h1", run_id="r1", task_id="t1", seed=1000,
                                       status="ready", image_url="https://x/hero.png"), post,
-                   SceneAsset(id="s1", name="office", detail_text="a desk"),
-                   SceneAssetVersion(id="sv1", scene_asset_name="office", version=1,
+                   SceneAsset(owner_id=LOCAL_USER_ID, id="s1", name="office", detail_text="a desk"),
+                   SceneAssetVersion(owner_id=LOCAL_USER_ID, id="sv1", scene_asset_name="office", version=1,
                                      detail_text="a desk"),
                    PostDraft(id="d1", post_id="p1", version=1, post_text="hello",
                              generated_by="draft"),

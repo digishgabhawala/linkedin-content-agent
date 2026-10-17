@@ -250,7 +250,7 @@ def test_image_task_carries_remote_locked_hero_snapshot(db):
     q = FakeQueue()
     card = {"character_id": "remote_dev", "trigger_token": "remote_dev",
             "display_name": "Remote Dev"}
-    db.add(Character(character_id="remote_dev", card_json=json.dumps(card),
+    db.add(Character(owner_id=LOCAL_USER_ID, character_id="remote_dev", card_json=json.dumps(card),
                      hero_asset_id="sha256:abc", hero_version=3,
                      hero_image_url="https://storage.example/hero.png"))
     post = Post(owner_id=LOCAL_USER_ID, character_id="remote_dev", brief="b", status="locked", post_text="p",
