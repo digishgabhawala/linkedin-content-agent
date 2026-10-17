@@ -28,9 +28,15 @@ def supabase(monkeypatch):
     monkeypatch.setattr(settings, "auth_enabled", True)
     monkeypatch.setattr(settings, "supabase_url", "https://proj.supabase.co")
     monkeypatch.setattr(settings, "supabase_publishable_key", "pk")
-    monkeypatch.setattr(settings, "auth_allowed_emails", "Admin@Example.com")
     auth.clear_cache()
-    fake = {"calls": 0, "email": "admin@example.com", "error": None}
+    fake = {"calls": 0, "email": "admin@example.com", "error": None,
+            "access": auth.Access("approved", True), "access_calls": 0}
+
+    def load_access(user_id):
+        fake["access_calls"] += 1
+        return fake["access"]
+
+    monkeypatch.setattr(auth, "_load_access", load_access)
 
     async def fetch(token):
         fake["calls"] += 1
@@ -62,12 +68,7 @@ def test_invalid_token_is_401(api, supabase):
 def test_allowed_email_any_case_gets_in(api, supabase):
     assert _get(api, token=_token()).status_code == 200
     me = _get(api, "/api/linkedin/auth/me", token=_token())
-    assert me.json() == {"email": "admin@example.com"}
-
-
-def test_other_email_is_403(api, supabase):
-    supabase["email"] = "someone@else.com"
-    assert _get(api, token=_token()).status_code == 403
+    assert me.json() == {"email": "admin@example.com", "user_id": "u1"}
 
 
 def test_supabase_unreachable_is_503(api, supabase):
@@ -111,14 +112,6 @@ def test_cache_never_outlives_the_token(api, supabase):
     assert supabase["calls"] == 2
 
 
-def test_forbidden_users_are_not_cached(api, supabase):
-    supabase["email"] = "someone@else.com"
-    token = _token()
-    _get(api, token=token)
-    _get(api, token=token)
-    assert supabase["calls"] == 2
-
-
 def test_public_routes_need_no_token(api, supabase):
     assert _get(api, "/api/linkedin/health").status_code == 200
     config = _get(api, "/api/linkedin/auth/config").json()
@@ -146,11 +139,52 @@ def test_every_other_route_requires_login(api, supabase):
     assert checked > 20
 
 
-@pytest.mark.parametrize("missing", ["supabase_url", "supabase_publishable_key",
-                                     "auth_allowed_emails"])
+@pytest.mark.parametrize("missing", ["supabase_url", "supabase_publishable_key"])
 def test_enabled_auth_requires_its_settings(missing):
     values = {"auth_enabled": True, "supabase_url": "https://p.supabase.co",
-              "supabase_publishable_key": "pk", "auth_allowed_emails": "a@b.c"}
+              "supabase_publishable_key": "pk"}
     values[missing] = ""
     with pytest.raises(ValidationError, match=missing.upper()):
         Settings(_env_file=None, **values)
+
+
+@pytest.mark.parametrize("access,reason", [
+    (auth.Access("pending", False), "pending"), (auth.Access("rejected", False), "rejected"),
+    (auth.Access("suspended", True), "suspended"), (auth.Access(None, False), "pending"),
+    (auth.Access("approved", False), "no_membership"),
+])
+def test_refused_accounts_get_403_with_a_reason(api, supabase, access, reason):
+    supabase["access"] = access
+    resp = _get(api, token=_token())
+    assert resp.status_code == 403
+    assert resp.json()["reason"] == reason and resp.json()["detail"]
+
+
+def test_approved_member_gets_in(api, supabase):
+    assert _get(api, token=_token()).status_code == 200
+
+
+def test_access_is_rechecked_after_60_seconds(api, supabase, monkeypatch):
+    clock = [time.time()]
+    monkeypatch.setattr(auth, "_now", lambda: clock[0])
+    token = _token()
+    assert _get(api, token=token).status_code == 200
+    supabase["access"] = auth.Access("suspended", True)
+    assert _get(api, token=token).status_code == 200          # within 60 s: cached
+    clock[0] += 61
+    resp = _get(api, token=token)
+    assert resp.status_code == 403 and resp.json()["reason"] == "suspended"
+    assert supabase["calls"] == 1                              # identity still cached
+    assert supabase["access_calls"] == 2
+
+
+def test_allow_list_is_retired():
+    s = Settings(_env_file=None, auth_enabled=True, supabase_url="https://p.supabase.co",
+                 supabase_publishable_key="pk")
+    assert not hasattr(s, "allowed_emails")
+
+
+def test_access_needs_postgres():
+    with pytest.raises(HTTPException) as exc:
+        auth._load_access("00000000-0000-0000-0000-000000000000")
+    assert exc.value.status_code == 503

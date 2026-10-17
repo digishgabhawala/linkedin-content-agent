@@ -47,7 +47,7 @@ class Settings(BaseSettings):
     image_stall_timeout_minutes: int = 40
 
     # Login (same approach as task-queue's admin page): a Supabase session
-    # whose email is on the allow list. Off by default so local development
+    # whose platform profile is approved with a linkedin membership. Off by default so local development
     # and tests need no login; production sets AUTH_ENABLED=true.
     auth_enabled: bool = False
     supabase_url: str = ""
@@ -58,21 +58,19 @@ class Settings(BaseSettings):
     # it bypasses every Supabase protection. Never expose it to the frontend.
     supabase_service_key: str = ""
     storage_bucket: str = "linkedin"
-    auth_allowed_emails: str = ""  # comma list, case-insensitive
     # How long a verified token is trusted before Supabase is asked again
     # (never past the token's own expiry). The UI polls every few seconds.
     auth_cache_minutes: float = 15
+    # How long an account's approval status + linkedin membership (read from
+    # the platform schema) is trusted. At most 60 s: a suspension must bite
+    # within a minute.
+    access_cache_seconds: float = 60
 
     class Config:
         env_file = ".env"
         # Retired keys (e.g. OLLAMA_URL/OLLAMA_MODEL -- text generation now
         # runs on the task-queue worker) must not stop the app starting.
         extra = "ignore"
-
-    @property
-    def allowed_emails(self) -> frozenset[str]:
-        return frozenset(e.strip().casefold() for e in self.auth_allowed_emails.split(",")
-                         if e.strip())
 
     @property
     def task_queue_api_url(self) -> str:
@@ -95,8 +93,6 @@ class Settings(BaseSettings):
             for name in ("supabase_url", "supabase_publishable_key"):
                 if not getattr(self, name):
                     raise ValueError(f"{name.upper()} is required when AUTH_ENABLED=true")
-            if not self.allowed_emails:
-                raise ValueError("AUTH_ALLOWED_EMAILS is required when AUTH_ENABLED=true")
         return self
 
 

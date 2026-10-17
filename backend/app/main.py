@@ -9,6 +9,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from .api.routes import public_router, router
 from .config import settings
 from .db.database import init_db
+from .errors import ReasonedHTTPException, reasoned_http_exception_handler
 from .services.llm_client import TaskQueueUnavailable
 
 
@@ -22,6 +23,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="LinkedIn Content Agent", lifespan=lifespan)
 app.include_router(public_router)
 app.include_router(router)
+app.add_exception_handler(ReasonedHTTPException, reasoned_http_exception_handler)
 
 # LLM calls run on the user's worker via the task-queue (llm_client.py); turn
 # their failures into clear HTTP errors the UI shows as-is.
