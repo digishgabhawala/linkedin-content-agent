@@ -142,6 +142,8 @@ def test_poll_promotes_candidates_and_lock_is_transactional(api, monkeypatch):
     assert ready["status"] == "completed"
     assert [candidate["status"] for candidate in ready["candidates"]] == ["ready", "ready"]
     assert len(queue.uploads) == 2
+    assert all("/storage/v1/object/linkedin/characters/auth-disabled/new_dev/candidates/"
+               in upload["url"] for upload in queue.uploads)
     first, second = ready["candidates"]
 
     locked = api.post(

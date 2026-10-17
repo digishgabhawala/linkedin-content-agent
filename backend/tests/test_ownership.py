@@ -47,3 +47,24 @@ def test_backdrops_are_private_and_names_are_per_owner(api, users):
         assert api.request(method, f"{API}/scene-assets/office{path}", json=body).status_code == 404
     assert api.post(f"{API}/scene-assets", json={"display_name": "Office", "detail_text": "B"}
                     ).status_code == 201
+
+
+def test_characters_and_hero_runs_are_private(api, users, monkeypatch):
+    from tests.test_character_studio_routes import CARD, _studio_queue
+    users("user-a")
+    _studio_queue(api, monkeypatch)
+    assert api.post(f"{API}/characters", json=CARD).status_code == 201
+    run = api.post(f"{API}/characters/new_dev/hero-generations",
+                   json={"candidate_count": 1, "base_seed": 1}).json()
+    users("user-b")
+    assert api.get(f"{API}/characters").json() == []
+    for method, path, body in [
+        ("get", "", None), ("get", "/hero-generations", None),
+        ("post", "/hero-generations", {"candidate_count": 1}),
+        ("get", f"/hero-generations/{run['id']}", None),
+        ("post", f"/hero-candidates/{run['candidates'][0]['id']}/lock", None),
+    ]:
+        assert api.request(method, f"{API}/characters/new_dev{path}", json=body
+                           ).status_code == 404, path
+    # ids stay globally unique (stable global IDs, spec Q7): a clash is a 409
+    assert api.post(f"{API}/characters", json=CARD).status_code == 409
