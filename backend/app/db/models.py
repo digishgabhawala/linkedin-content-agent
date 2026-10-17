@@ -23,7 +23,7 @@ class Post(Base):
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     # Supabase user id of the post's owner ("auth-disabled" locally).
-    owner_id = Column(String, nullable=True)
+    owner_id = Column(String, nullable=False)
     # The owner's mascot used for the image; null until one is chosen (text
     # steps work without it).
     character_id = Column(String, nullable=True)
@@ -108,7 +108,7 @@ class Character(Base):
     __tablename__ = "characters"
 
     character_id = Column(String, primary_key=True)
-    owner_id = Column(String, nullable=True)
+    owner_id = Column(String, nullable=False)
     display_name = Column(String, nullable=True)
     personality = Column(Text, nullable=True)
     # Complete provider-neutral CharacterCard JSON. Workers receive a
@@ -202,7 +202,7 @@ class SceneAsset(Base):
     __table_args__ = (UniqueConstraint("owner_id", "name", name="uq_scene_asset_owner_name"),)
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    owner_id = Column(String, nullable=True)
+    owner_id = Column(String, nullable=False)
     name = Column(String, nullable=False)  # slug, e.g. "office"; unique per owner
     # Editable label for people; `name` stays the stable prompt identifier.
     display_name = Column(String, nullable=True)
@@ -226,7 +226,7 @@ class SceneAssetVersion(Base):
     )
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    owner_id = Column(String, nullable=True)
+    owner_id = Column(String, nullable=False)
     scene_asset_name = Column(String, nullable=False)
     version = Column(Integer, nullable=False)
     detail_text = Column(Text, nullable=False)

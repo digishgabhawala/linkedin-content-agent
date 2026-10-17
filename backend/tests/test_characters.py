@@ -11,7 +11,7 @@ from tests.test_steps import LONG_BRIEF, FakeQueue
 
 
 def test_post_loads_its_character_or_none(db_session):
-    db_session.add(Character(character_id="gtee_dev", personality="dry humor",
+    db_session.add(Character(owner_id=LOCAL_USER_ID, character_id="gtee_dev", personality="dry humor",
                              hero_image_url="https://x/hero.png?v=1"))
     db_session.add_all([Post(owner_id=LOCAL_USER_ID, id="a", character_id="gtee_dev", brief="b"),
                         Post(owner_id=LOCAL_USER_ID, id="b", character_id="nobody", brief="b")])
@@ -23,7 +23,7 @@ def test_post_loads_its_character_or_none(db_session):
 
 def test_draft_prompt_carries_the_rows_personality_only_when_present(db_session):
     q = FakeQueue()
-    db_session.add(Character(character_id="gtee_dev", personality="asks 'is it webscale?'"))
+    db_session.add(Character(owner_id=LOCAL_USER_ID, character_id="gtee_dev", personality="asks 'is it webscale?'"))
     with_row = Post(owner_id=LOCAL_USER_ID, character_id="gtee_dev", brief=LONG_BRIEF, status="clarifying",
                     category="lessons_learned", clarify_transcript="[]")
     no_row = Post(owner_id=LOCAL_USER_ID, character_id="nobody", brief=LONG_BRIEF, status="clarifying",
@@ -45,7 +45,7 @@ def test_draft_prompt_carries_the_rows_personality_only_when_present(db_session)
 ])
 def test_image_url(db_session, final, has_character, expected):
     if has_character:
-        db_session.add(Character(character_id="gtee_dev", hero_image_url="https://x/hero.png?v=1"))
+        db_session.add(Character(owner_id=LOCAL_USER_ID, character_id="gtee_dev", hero_image_url="https://x/hero.png?v=1"))
     db_session.add(Post(owner_id=LOCAL_USER_ID, id="p", character_id="gtee_dev", brief="b", final_image_path=final))
     db_session.commit()
     db_session.expire_all()
