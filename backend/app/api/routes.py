@@ -802,8 +802,10 @@ def update_scene_asset(name: str, req: SceneAssetUpdateRequest, db: Session = De
     try:
         asset = ps.update_scene_asset(db, name, req.detail_text, req.display_name,
                                       owner_id=user.id)
-    except ps.PostServiceError as e:
+    except ps.SceneAssetNotFound as e:
         raise HTTPException(status_code=404, detail=str(e))
+    except ps.PostServiceError as e:  # validation: empty description / name
+        raise HTTPException(status_code=400, detail=str(e))
     return _serialize_scene_asset(asset, db)
 
 

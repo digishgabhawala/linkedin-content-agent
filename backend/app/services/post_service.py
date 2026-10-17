@@ -38,6 +38,10 @@ class PostServiceError(Exception):
     """Raised for invalid state transitions (wrong status for the requested action)."""
 
 
+class SceneAssetNotFound(PostServiceError):
+    """The backdrop doesn't exist for this owner (404, not a validation error)."""
+
+
 def _load_transcript(post: Post) -> list[dict]:
     if not post.clarify_transcript:
         return []
@@ -385,7 +389,7 @@ def update_scene_asset(
 ) -> SceneAsset:
     asset = _owned_asset(db, name, owner_id)
     if asset is None:
-        raise PostServiceError(f"scene asset {name!r} not found")
+        raise SceneAssetNotFound(f"scene asset {name!r} not found")
     detail = detail_text.strip()
     if not detail:
         raise PostServiceError("backdrop description is required")
