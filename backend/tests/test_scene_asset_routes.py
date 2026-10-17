@@ -96,3 +96,21 @@ def test_backdrop_library_create_archive_restore_and_post_selection(api):
     assert historical["current_version"] == 3
     assert historical["detail_text"] == "a warm focused desk"
 
+
+
+def test_patch_scene_asset_validation_error_is_400_and_missing_asset_is_404(api):
+    created = api.post("/api/linkedin/scene-assets",
+                       json={"display_name": "Studio", "detail_text": "a bright studio"})
+    assert created.status_code == 201
+    name = created.json()["name"]
+
+    empty = api.patch(f"/api/linkedin/scene-assets/{name}", json={"detail_text": "   "})
+    assert empty.status_code == 400
+    assert "description is required" in empty.json()["detail"]
+
+    blank_label = api.patch(f"/api/linkedin/scene-assets/{name}",
+                            json={"detail_text": "a bright studio", "display_name": "  "})
+    assert blank_label.status_code == 400
+
+    missing = api.patch("/api/linkedin/scene-assets/nope", json={"detail_text": "x"})
+    assert missing.status_code == 404
