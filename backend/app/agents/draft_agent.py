@@ -31,7 +31,6 @@ from ..services.llm_client import LLMRequest
 from .content_sources import (
     load_example_for_category,
     load_skill,
-    load_user_profile,
 )
 from .taxonomy import CATEGORIES
 
@@ -39,8 +38,10 @@ _FRAMING = """You are a ghostwriter helping a person build their LinkedIn presen
 in THEIR first-person voice, based on what they tell you they worked on."""
 
 
-def build_system_prompt(personality: str | None, category: str | None = None) -> str:
-    """Assembles the writer's system prompt from user_profile.md + skill.md +
+def build_system_prompt(personality: str | None, category: str | None = None, *,
+                        user_profile: str) -> str:
+    """Assembles the writer's system prompt from the post owner's writer
+    profile (user_profile) + skill.md +
     (optionally) the brand character's personality + (optionally) a
     category-matched example post. Read fresh per call, not cached, since
     these files are meant to be hand-edited between runs.
@@ -49,7 +50,7 @@ def build_system_prompt(personality: str | None, category: str | None = None) ->
     six would dilute the writer across styles it doesn't need for this post,
     and defeats the point of category-specific style (see
     example_posts.md's own docstring)."""
-    parts = [_FRAMING, f"USER PROFILE:\n{load_user_profile()}"]
+    parts = [_FRAMING, f"USER PROFILE:\n{user_profile}"]
 
     if personality:
         parts.append(
@@ -317,9 +318,10 @@ _LENGTH_REMINDER = ("REMINDER on length: this system has been consistently under
 
 
 def build_draft_request(brief: str, transcript: list[dict], personality: str | None = None,
-                        category: str | None = None) -> LLMRequest:
+                        category: str | None = None, *, user_profile: str) -> LLMRequest:
     """Initial draft from the brief + clarification transcript."""
-    system_prompt = build_system_prompt(personality, category) + "\n\n" + _CALIBRATION_EXAMPLE
+    system_prompt = (build_system_prompt(personality, category, user_profile=user_profile)
+                     + "\n\n" + _CALIBRATION_EXAMPLE)
     user_content = (f"BRIEF:\n{brief}\n\n"
                     f"CLARIFICATION:\n{_format_transcript(transcript)}\n\n"
                     f"{_FACT_REMINDER}\n\n{_HOOK_REMINDER}\n\n{_LENGTH_REMINDER}\n\nWrite the LinkedIn post.")
@@ -332,10 +334,11 @@ def parse_draft(raw: str) -> str:
 
 def build_rewrite_request(previous_text: str, instruction: str,
                           personality: str | None = None,
-                          category: str | None = None) -> LLMRequest:
+                          category: str | None = None, *, user_profile: str) -> LLMRequest:
     """Revise an existing draft per user feedback/instruction (or a judge-pillar
     critique, when called from the recalibration loop)."""
-    system_prompt = build_system_prompt(personality, category) + "\n\n" + _CALIBRATION_EXAMPLE
+    system_prompt = (build_system_prompt(personality, category, user_profile=user_profile)
+                     + "\n\n" + _CALIBRATION_EXAMPLE)
     user_content = (f"CURRENT DRAFT:\n{previous_text}\n\n"
                     f"REVISION INSTRUCTION:\n{instruction}\n\n"
                     f"{_FACT_REMINDER}\n\n{_HOOK_REMINDER}\n\n{_LENGTH_REMINDER}\n\nWrite the revised LinkedIn post, "
