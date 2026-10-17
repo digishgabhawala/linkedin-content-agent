@@ -26,10 +26,11 @@ from sqlalchemy import text
 
 from .config import settings
 from .db import database
+from .db.owners import LOCAL_OWNER_ID
 from .errors import ReasonedHTTPException
 
 _bearer = HTTPBearer(auto_error=False)
-LOCAL_USER_ID = "auth-disabled"  # the fixed local user (AUTH_ENABLED=false)
+LOCAL_USER_ID = LOCAL_OWNER_ID  # the fixed local user (AUTH_ENABLED=false)
 APP = "linkedin"
 _MESSAGES = {"pending": "Your account is waiting for approval.",
              "rejected": "Your account was not approved.",

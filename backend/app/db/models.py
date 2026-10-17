@@ -6,6 +6,7 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -18,9 +19,14 @@ from .database import Base
 
 class Post(Base):
     __tablename__ = "posts"
+    __table_args__ = (Index("ix_posts_owner_created", "owner_id", "created_at"),)
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    character_id = Column(String, nullable=False, default="gtee_dev")
+    # Supabase user id of the post's owner ("auth-disabled" locally).
+    owner_id = Column(String, nullable=True)
+    # The owner's mascot used for the image; null until one is chosen (text
+    # steps work without it).
+    character_id = Column(String, nullable=True)
     brief = Column(Text, nullable=False)
     clarify_transcript = Column(Text, nullable=True)  # JSON-encoded list of turns
 
@@ -42,7 +48,7 @@ class Post(Base):
     gate_scores = Column(Text, nullable=True)
     pillar_scores = Column(Text, nullable=True)
     weighted_score = Column(Float, nullable=True)
-    recalibration_count = Column(Integer, nullable=False, default=0)
+    recalibration_count = Column(Integer, nullable=False, default=0, server_default="0")
     escalation_reason = Column(Text, nullable=True)
 
     scene_instruction = Column(Text, nullable=True)
@@ -94,7 +100,8 @@ class Post(Base):
 
 class Character(Base):
     """The brand mascot, copied from character-forge-v2 by
-    scripts/sync_character.py. owner_id is filled once users exist."""
+    scripts/sync_character.py or made in Character Studio. owner_id is the
+    Supabase user id of its owner; character_id stays globally unique."""
     __tablename__ = "characters"
 
     character_id = Column(String, primary_key=True)
@@ -189,13 +196,15 @@ class SceneAsset(Base):
     the seed. detail_text/current_version point to the active revision;
     immutable SceneAssetVersion rows preserve what older posts used."""
     __tablename__ = "scene_assets"
+    __table_args__ = (UniqueConstraint("owner_id", "name", name="uq_scene_asset_owner_name"),)
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    name = Column(String, nullable=False, unique=True)  # slug, e.g. "office"
+    owner_id = Column(String, nullable=True)
+    name = Column(String, nullable=False)  # slug, e.g. "office"; unique per owner
     # Editable label for people; `name` stays the stable prompt identifier.
     display_name = Column(String, nullable=True)
     detail_text = Column(Text, nullable=False)
-    current_version = Column(Integer, nullable=False, default=1)
+    current_version = Column(Integer, nullable=False, default=1, server_default="1")
     archived_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -209,10 +218,12 @@ class SceneAssetVersion(Base):
     """
     __tablename__ = "scene_asset_versions"
     __table_args__ = (
-        UniqueConstraint("scene_asset_name", "version", name="uq_scene_asset_version"),
+        UniqueConstraint("owner_id", "scene_asset_name", "version",
+                         name="uq_scene_asset_version_owner"),
     )
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    owner_id = Column(String, nullable=True)
     scene_asset_name = Column(String, nullable=False)
     version = Column(Integer, nullable=False)
     detail_text = Column(Text, nullable=False)
@@ -228,3 +239,13 @@ class Feedback(Base):
     post_text_snippet = Column(Text, nullable=True)
     user_note = Column(Text, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class WriterProfile(Base):
+    """Who the writer is (Markdown, at most 8,000 characters): one per user.
+    Replaces content_config/user_profile.md, which stays as the template."""
+    __tablename__ = "writer_profiles"
+
+    owner_id = Column(String, primary_key=True)
+    profile_md = Column(Text, nullable=False)
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow)

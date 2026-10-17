@@ -3,7 +3,9 @@
 Usage (from backend/):
     .venv/bin/python scripts/init_db.py
 
-Uses DATABASE_URL / DB_SCHEMA from .env. The hosted app runs with
+Uses DATABASE_URL / DB_SCHEMA from .env. Rows from before multi-user are
+given to BACKFILL_OWNER_EMAIL's platform account (required on Postgres only
+while unowned rows exist). The hosted app runs with
 AUTO_INIT_DB=false, so run this against production before deploying a
 change that adds tables or columns. On Postgres it also (re)applies the
 Storage policies that let signed-in users upload hero candidates.
@@ -17,10 +19,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.config import settings
 from app.db.database import engine, init_db
+from app.db.owners import resolve_owner_id
 from app.db.storage_policies import apply_storage_policies
 
 
 def main() -> int:
+    owner = resolve_owner_id(engine, settings.backfill_owner_email)
+    print(f"backfill owner: {owner or 'none needed'}")
     init_db()
     print(f"schema {settings.db_schema!r} is up to date on {engine.url.render_as_string()}")
     if apply_storage_policies(engine, settings.storage_bucket):
