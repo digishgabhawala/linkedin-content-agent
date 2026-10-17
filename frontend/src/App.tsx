@@ -3,6 +3,7 @@ import { api } from './api'
 import { usePostPolling } from './hooks/usePostPolling'
 import type { Character, ImageReadiness, Post, RendererStatus } from './types'
 import { BriefForm } from './components/BriefForm'
+import { MascotRequired } from './components/MascotRequired'
 import { ClarifyChat } from './components/ClarifyChat'
 import { DraftPanel } from './components/DraftPanel'
 import { DraftHistory } from './components/DraftHistory'
@@ -61,6 +62,26 @@ export default function App() {
   const [onboarding, setOnboarding] = useState(false)
   const [characters, setCharacters] = useState<Character[]>([])
   const [characterRequired, setCharacterRequired] = useState(false)
+  // Characters with a locked hero, newest first: a post needs one. null while
+  // loading; 'unknown' if the list failed (the server still enforces it).
+  const [mascots, setMascots] = useState<Character[] | 'unknown' | null>(null)
+  const onNewPostScreen = activeView === 'posts' && !post
+
+  // Refreshed whenever the new-post screen shows, e.g. after locking a hero
+  // in Character Studio.
+  useEffect(() => {
+    if (!onNewPostScreen) return
+    let active = true
+    api.listCharacters()
+      .then(list => {
+        if (!active) return
+        setMascots(list
+          .filter(c => c.hero_image_url)
+          .sort((a, b) => (b.updated_at ?? '').localeCompare(a.updated_at ?? '')))
+      })
+      .catch(() => { if (active) setMascots('unknown') })
+    return () => { active = false }
+  }, [onNewPostScreen])
   const needsCharacter = !!post && post.status === 'locked'
     && (post.character_id === null || characterRequired)
 
@@ -178,13 +199,17 @@ export default function App() {
     if (p) setPost(p)
   }
 
-  async function handleNewBrief(brief: string) {
+  async function handleNewBrief(brief: string, characterId?: string) {
     const p = await run(async () => {
       try {
-        return await api.createPost(brief)
+        return await api.createPost(brief, characterId)
       } catch (e) {
         if (e instanceof ApiError && e.reason === 'profile_required') {
           openOnboarding()
+          return undefined
+        }
+        if (e instanceof ApiError && e.reason === 'character_required') {
+          setMascots([])  // onboarding's mascot step: show the guidance
           return undefined
         }
         throw e
@@ -529,7 +554,14 @@ export default function App() {
 
           {!post && (
             <section className="post-panel post-panel--brief" aria-labelledby="new-post-heading">
-              <BriefForm onSubmit={handleNewBrief} loading={working} />
+              {mascots === null ? (
+                <p role="status" className="text-sm text-gray-600">Loading…</p>
+              ) : mascots !== 'unknown' && mascots.length === 0 ? (
+                <MascotRequired />
+              ) : (
+                <BriefForm onSubmit={handleNewBrief} loading={working}
+                  mascots={mascots === 'unknown' ? [] : mascots} />
+              )}
             </section>
           )}
 

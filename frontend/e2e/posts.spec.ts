@@ -105,6 +105,8 @@ test.describe('Posts workspace', () => {
   test('presents a focused empty state on desktop', async ({ page }, testInfo) => {
     test.skip(testInfo.project.name !== 'desktop-chromium', 'Desktop empty-state coverage')
     await mockPosts(page, [])
+    await page.route('**/api/linkedin/characters', r => r.fulfill({ json: [
+      { character_id: 'asha_bot', display_name: 'Asha Bot', hero_image_url: 'https://h/x.png' }] }))
     await page.goto('#posts')
 
     await expect(page.getByRole('heading', { name: 'Posts', exact: true })).toBeVisible()

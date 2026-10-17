@@ -34,6 +34,8 @@ test('creating a post without a profile opens the Profile tab', async ({ page })
   await page.route('**/api/linkedin/profile', r => r.fulfill({ json: refused
     ? { profile_md: null, is_set: false, template: '# Template', updated_at: null }
     : { profile_md: 'x', is_set: true, template: 'T', updated_at: null } }))
+  await page.route('**/api/linkedin/characters', r => r.fulfill({ json: [
+    { character_id: 'asha_bot', display_name: 'Asha Bot', hero_image_url: 'https://h/x.png' }] }))
   await page.route('**/api/linkedin/posts', r => {
     if (r.request().method() !== 'POST') return r.fulfill({ json: [] })
     refused = true

@@ -1,17 +1,23 @@
 import { useState, type FormEvent } from 'react'
+import type { Character } from '../types'
 
 interface Props {
-  onSubmit: (brief: string) => void
+  onSubmit: (brief: string, characterId?: string) => void
   loading: boolean
+  // The user's characters with a locked hero, newest first (the default).
+  mascots: Character[]
 }
 
-export function BriefForm({ onSubmit, loading }: Props) {
+export function BriefForm({ onSubmit, loading, mascots }: Props) {
   const [brief, setBrief] = useState('')
+  const [choice, setChoice] = useState('')
+  const mascot = mascots.some(c => c.character_id === choice)
+    ? choice : mascots[0]?.character_id
 
   function submit(event?: FormEvent<HTMLFormElement>) {
     event?.preventDefault()
     if (!brief.trim() || loading) return
-    onSubmit(brief.trim())
+    onSubmit(brief.trim(), mascot)
   }
 
   return (
@@ -36,6 +42,20 @@ export function BriefForm({ onSubmit, loading }: Props) {
         />
         <p className="post-field__hint">Specific details produce a stronger, more credible post.</p>
       </div>
+      {mascots.length > 1 && (
+        <div className="post-field">
+          <label htmlFor="post-mascot">Mascot</label>
+          <select id="post-mascot" value={mascot} onChange={e => setChoice(e.target.value)}
+            disabled={loading} className="rounded-lg border border-gray-300 px-3 py-2 text-sm">
+            {mascots.map(c => (
+              <option key={c.character_id} value={c.character_id}>
+                {c.display_name || c.character_id}
+              </option>
+            ))}
+          </select>
+          <p className="post-field__hint">The character illustrated in this post's image.</p>
+        </div>
+      )}
       <div className="post-actions">
         <button
           type="submit"
