@@ -431,28 +431,36 @@ def create_character(req: CharacterCardRequest,
     return _serialize_character(character)
 
 
+def _character_or_404(db: Session, character_id: str, user: AuthUser) -> Character:
+    """Another owner's character is 404 too: nothing reveals what exists."""
+    character = db.get(Character, character_id)
+    if character is None or character.owner_id != user.id:
+        raise HTTPException(404, f"character {character_id!r} not found")
+    return character
+
+
 @router.get("/characters")
-def list_characters(db: Session = Depends(get_db)):
+def list_characters(db: Session = Depends(get_db),
+                    user: AuthUser = Depends(current_user)):
     characters = db.scalars(
-        select(Character).order_by(Character.character_id)).all()
+        select(Character).where(Character.owner_id == user.id)
+        .order_by(Character.character_id)).all()
     return [_serialize_character(character) for character in characters]
 
 
 @router.get("/characters/{character_id}")
-def get_character(character_id: str, db: Session = Depends(get_db)):
-    character = db.get(Character, character_id)
-    if character is None:
-        raise HTTPException(404, f"character {character_id!r} not found")
-    return _serialize_character(character)
+def get_character(character_id: str, db: Session = Depends(get_db),
+                  user: AuthUser = Depends(current_user)):
+    return _serialize_character(_character_or_404(db, character_id, user))
 
 
 @router.post("/characters/{character_id}/hero-generations", status_code=202)
 async def start_hero_generation(
         character_id: str, req: HeroGenerationRequest,
         db: Session = Depends(get_db),
-        client: httpx.AsyncClient = Depends(get_http_client)):
-    if db.get(Character, character_id) is None:
-        raise HTTPException(404, f"character {character_id!r} not found")
+        client: httpx.AsyncClient = Depends(get_http_client),
+        user: AuthUser = Depends(current_user)):
+    _character_or_404(db, character_id, user)
     seed = req.base_seed if req.base_seed is not None else secrets.randbelow(900_000) + 100_000
     try:
         run = await hgs.start_generation(
@@ -463,9 +471,9 @@ async def start_hero_generation(
 
 
 @router.get("/characters/{character_id}/hero-generations")
-def list_hero_generations(character_id: str, db: Session = Depends(get_db)):
-    if db.get(Character, character_id) is None:
-        raise HTTPException(404, f"character {character_id!r} not found")
+def list_hero_generations(character_id: str, db: Session = Depends(get_db),
+                          user: AuthUser = Depends(current_user)):
+    _character_or_404(db, character_id, user)
     runs = db.scalars(
         select(HeroGenerationRun)
         .where(HeroGenerationRun.character_id == character_id)
@@ -493,6 +501,7 @@ async def get_hero_generation(
         db: Session = Depends(get_db),
         client: httpx.AsyncClient = Depends(get_http_client),
         user: AuthUser = Depends(current_user)):
+    _character_or_404(db, character_id, user)
     run = db.get(HeroGenerationRun, run_id)
     if run is None or run.character_id != character_id:
         raise HTTPException(404, f"hero generation {run_id!r} not found")
@@ -504,7 +513,9 @@ async def get_hero_generation(
 
 @router.post("/characters/{character_id}/hero-candidates/{candidate_id}/lock")
 def lock_hero_candidate(character_id: str, candidate_id: str,
-                        db: Session = Depends(get_db)):
+                        db: Session = Depends(get_db),
+                        user: AuthUser = Depends(current_user)):
+    _character_or_404(db, character_id, user)
     try:
         character, candidate = hgs.lock_candidate(db, character_id, candidate_id)
     except hgs.HeroGenerationNotFound as exc:

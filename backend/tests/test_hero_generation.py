@@ -97,7 +97,7 @@ def _advance(db, io, run, storage=None, auth=USER_AUTH):
 
 @pytest.fixture()
 def character(db_session):
-    row = Character(character_id="gtee_dev", card_json=json.dumps(CARD))
+    row = Character(character_id="gtee_dev", owner_id="u-admin", card_json=json.dumps(CARD))
     db_session.add(row)
     db_session.commit()
     return row
@@ -153,7 +153,7 @@ def test_completed_tasks_are_promoted_with_the_users_token(
         "artifact-1", "artifact-2"]
     assert all(candidate.asset_id.startswith("sha256:") for candidate in run.candidates)
     assert all(candidate.image_url.startswith(
-        f"{BASE}/storage/v1/object/public/linkedin/characters/gtee_dev/candidates/")
+        f"{BASE}/storage/v1/object/public/linkedin/characters/u-admin/gtee_dev/candidates/")
         for candidate in run.candidates)
     assert [json.loads(candidate.metadata_json)["seed"]
             for candidate in run.candidates] == [2000, 2001]

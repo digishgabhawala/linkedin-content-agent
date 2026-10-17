@@ -149,8 +149,10 @@ async def _promote_artifact(storage: httpx.AsyncClient,
         raise HeroGenerationError("queue artifact was empty")
     digest = hashlib.sha256(image).hexdigest()
     asset_id = f"sha256:{digest}"
+    # characters/<owner_id>/...: the Storage policy lets a user write only
+    # inside their own folder (folder 2 = auth.uid()).
     storage_path = (
-        f"characters/{run.character_id}/candidates/{candidate.id}.png")
+        f"characters/{run.character.owner_id}/{run.character_id}/candidates/{candidate.id}.png")
     base = settings.supabase_url.rstrip("/")
     bearer, apikey = storage_auth
     upload = await storage.post(
