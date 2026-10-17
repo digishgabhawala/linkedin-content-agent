@@ -10,6 +10,7 @@ migration applied). Never point it at a hosted database:
 from __future__ import annotations
 
 import os
+import threading
 import uuid
 from pathlib import Path
 
@@ -60,6 +61,11 @@ def _old_rows(conn) -> None:
     conn.execute(text(
         "INSERT INTO characters (character_id, display_name, hero_version, hero_image_url, "
         "updated_at) VALUES ('gtee_dev', 'Gtee', 3, 'https://x/characters/gtee_dev/hero.png', now())"))
+    # Made with login off against this database (owner = the fixed local user):
+    # it belongs to the backfill owner too.
+    conn.execute(text(
+        "INSERT INTO characters (character_id, owner_id, hero_version, updated_at) "
+        "VALUES ('local_dev', 'auth-disabled', 0, now())"))
     conn.execute(text(
         "INSERT INTO hero_generation_runs VALUES ('run1', 'gtee_dev', '{}', 'full', 7, 1, "
         "'completed', now(), now())"))
@@ -122,7 +128,8 @@ def test_migration_backfills_owners_swaps_constraints_and_keeps_data(pg):
         assert _q(conn, "SELECT count(*) FROM feedback").scalar_one() == 2
         assert _q(conn, "SELECT count(*) FROM scene_asset_versions").scalar_one() == 2
         assert _q(conn, "SELECT image_url FROM hero_candidates").scalar_one().endswith("cand1.png")
-        assert _q(conn, "SELECT hero_image_url FROM characters").scalar_one().endswith("hero.png")
+        assert _q(conn, "SELECT hero_image_url FROM characters WHERE character_id = 'gtee_dev'"
+                  ).scalar_one().endswith("hero.png")
         assert _q(conn, "SELECT owner_id FROM writer_profiles").scalars().all() == [uid]
         assert _q(conn, "SELECT 1 FROM pg_indexes WHERE schemaname = :s AND indexname = "
                         "'ix_posts_owner_created'", s=SCHEMA).scalar_one() == 1
@@ -147,4 +154,35 @@ def test_unowned_rows_without_a_backfill_email_stop_the_migration(pg):
     engine = build_engine(_URL, SCHEMA)
     with pytest.raises(BackfillOwnerMissing):
         init_db(engine, SCHEMA, backfill_owner_email="")
+    engine.dispose()
+
+
+def test_a_long_old_transaction_makes_the_migration_fail_fast_not_stall(pg, monkeypatch):
+    """The old app keeps serving during the migration. An ALTER waiting behind
+    one of its open transactions would queue every later query behind it, so
+    the migration must give up after the lock timeout (and can be re-run)."""
+    from app.db import database
+    admin, _ = pg
+    monkeypatch.setattr(database, "_LOCK_TIMEOUT", "500ms")
+    engine = build_engine(_URL, SCHEMA)
+    outcome: dict = {}
+
+    def migrate():
+        try:
+            init_db(engine, SCHEMA, backfill_owner_email=EMAIL)
+            outcome["ok"] = True
+        except Exception as exc:  # noqa: BLE001
+            outcome["error"] = exc
+
+    with admin.connect() as old_app:  # an open read transaction, like a slow request
+        old_app.execute(text(f'SELECT count(*) FROM "{SCHEMA}".scene_assets'))
+        worker = threading.Thread(target=migrate, daemon=True)
+        worker.start()
+        worker.join(timeout=10)
+        stalled = worker.is_alive()
+        old_app.rollback()
+    worker.join(timeout=10)
+    assert not stalled, "the migration waited on the old app's lock with no timeout"
+    assert "lock timeout" in str(outcome.get("error", "")).lower()
+    init_db(engine, SCHEMA, backfill_owner_email=EMAIL)  # re-running finishes the job
     engine.dispose()
