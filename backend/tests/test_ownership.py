@@ -59,7 +59,7 @@ def test_characters_and_hero_runs_are_private(api, users, monkeypatch):
     assert api.post(f"{API}/characters", json=CARD).status_code == 201
     run = api.post(f"{API}/characters/new_dev/hero-generations",
                    json={"candidate_count": 1, "base_seed": 1}).json()
-    users("user-b")
+    users("user-b", with_character=False)  # so user-b owns no characters at all
     assert api.get(f"{API}/characters").json() == []
     for method, path, body in [
         ("get", "", None), ("get", "/hero-generations", None),
@@ -110,7 +110,7 @@ def _seed_user_a(api, users, monkeypatch) -> dict:
 
 def test_user_b_never_sees_user_a_records_on_any_route(api, users, monkeypatch):
     ids = _seed_user_a(api, users, monkeypatch)
-    users("user-b")
+    users("user-b", with_character=False)  # so user-b's lists are empty
     checked = 0
     for route in app.routes:
         if not isinstance(route, APIRoute):

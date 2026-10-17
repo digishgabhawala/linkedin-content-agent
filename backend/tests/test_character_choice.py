@@ -1,5 +1,6 @@
-"""Which character a post uses: optional, the owner's newest locked hero by
-default, required (409 character_required) only for the image."""
+"""Which character a post uses: a mascot (an owned character with a locked
+hero) is required to create a post -- the owner's newest one by default.
+Posts created before that rule may have none; the image then asks for one."""
 from datetime import datetime, timedelta
 
 from app.db.models import Character
@@ -25,15 +26,44 @@ def test_default_is_the_newest_character_with_a_locked_hero(api, users):
     assert api.post(f"{API}/posts", json={"brief": LONG_BRIEF}).json()["character_id"] == "newer"
 
 
-def test_without_characters_the_post_has_none_and_text_steps_run(api, users):
-    users("user-a")
+def test_without_a_locked_hero_creating_a_post_is_409_character_required(api, users):
+    users("fresh", with_character=False)
+    _character(api, "fresh", "no_hero", hero=False)
+    _character(api, "user-b", "not_mine")
+    resp = api.post(f"{API}/posts", json={"brief": LONG_BRIEF})
+    assert resp.status_code == 409 and resp.json()["reason"] == "character_required"
+    assert api.get(f"{API}/posts").json() == []
+    _character(api, "fresh", "mine")
     post = api.post(f"{API}/posts", json={"brief": LONG_BRIEF}).json()
-    assert post["character_id"] is None and post["active_step"]["name"] == "category"
+    assert post["character_id"] == "mine" and post["active_step"]["name"] == "category"
+
+
+def test_profile_required_wins_over_character_required(api, users):
+    users("fresh", with_profile=False, with_character=False)
+    resp = api.post(f"{API}/posts", json={"brief": LONG_BRIEF})
+    assert resp.status_code == 409 and resp.json()["reason"] == "profile_required"
+
+
+def test_a_requested_character_needs_a_locked_hero(api, users):
+    users("user-a")
+    _character(api, "user-a", "no_hero", hero=False)
+    resp = api.post(f"{API}/posts", json={"brief": LONG_BRIEF, "character_id": "no_hero"})
+    assert resp.status_code == 409 and resp.json()["reason"] == "character_required"
+
+
+def test_a_requested_owned_locked_character_is_used(api, users):
+    users("user-a")
+    _character(api, "user-a", "older", age_minutes=10)
+    _character(api, "user-a", "newer", age_minutes=1)
+    assert api.post(f"{API}/posts", json={"brief": LONG_BRIEF, "character_id": "older"}
+                    ).json()["character_id"] == "older"
 
 
 def test_another_users_character_is_404(api, users):
     _character(api, "user-b", "not_mine")
     users("user-a")
+    assert api.post(f"{API}/posts", json={"brief": LONG_BRIEF, "character_id": "nope"}
+                    ).status_code == 404
     assert api.post(f"{API}/posts", json={"brief": LONG_BRIEF, "character_id": "not_mine"}
                     ).status_code == 404
 
