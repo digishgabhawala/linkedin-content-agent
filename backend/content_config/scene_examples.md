@@ -33,7 +33,7 @@ the backdrop is incidental and not worth remembering as a named asset.
 
 ### Example 1
 POST: "Cut p95 latency from 800ms to 140ms by moving the cache in front of the DB call instead of behind it. Took a week to find, one line to fix."
-SCENE: {"action": "presenting a chart on a whiteboard, calm confident energy", "setting_name": "office", "setting_detail": "glass-walled meeting cabins visible in the background, a wall clock with a blank face, a whiteboard covered in diagram sketches and arrows, a closed laptop on a nearby desk", "angle": "three-quarter view", "mood": "calm, confident"}
+SCENE: {"action": "presenting a chart on a whiteboard, calm confident energy", "setting_name": "office", "setting_detail": "empty glass-walled meeting cabins visible in the background, a wall clock with a blank face, a whiteboard covered in diagram sketches and arrows, a closed laptop on a nearby desk", "angle": "three-quarter view", "mood": "calm, confident"}
 
 ### Example 2
 POST: "Found the exact line causing a memory leak that had been creeping up for weeks. One unclosed file handle in a retry loop. Fixed, and memory usage is flat now."
@@ -45,7 +45,7 @@ SCENE: {"action": "closing a laptop with a satisfied nod, one hand still on the 
 
 ### Example 1
 POST: "Spent the whole day chasing a race condition that only reproduced under load. Turned out to be a missing mutex around a shared counter."
-SCENE: {"action": "facepalming at a laptop, screen dim, shoulders slumped", "setting_name": "office", "setting_detail": "glass-walled meeting cabins visible in the background, a wall clock with a blank face, a whiteboard covered in diagram sketches and arrows, a closed laptop on a nearby desk", "angle": "front view", "mood": "frustrated, dim lighting"}
+SCENE: {"action": "facepalming at a laptop, screen dim, shoulders slumped", "setting_name": "office", "setting_detail": "empty glass-walled meeting cabins visible in the background, a wall clock with a blank face, a whiteboard covered in diagram sketches and arrows, a closed laptop on a nearby desk", "angle": "front view", "mood": "frustrated, dim lighting"}
 
 ### Example 2
 POST: "Three failed deploys in a row today. Every fix revealed the next thing that was broken. Finally got it stable at 11pm."
@@ -57,7 +57,7 @@ SCENE: {"action": "rubbing temples, staring at a dark screen, tense posture", "s
 
 ### Example 1
 POST: "Set up a local system that reviews my conversations and gives feedback on what could have gone better, broken down by type and role."
-SCENE: {"action": "pointing at a wall of printed charts and sticky notes, studying them closely", "setting_name": "office", "setting_detail": "glass-walled meeting cabins visible in the background, a wall clock with a blank face, a whiteboard covered in diagram sketches and arrows, a closed laptop on a nearby desk", "angle": "side view", "mood": "analytical, focused"}
+SCENE: {"action": "pointing at a wall of printed charts and sticky notes, studying them closely", "setting_name": "office", "setting_detail": "empty glass-walled meeting cabins visible in the background, a wall clock with a blank face, a whiteboard covered in diagram sketches and arrows, a closed laptop on a nearby desk", "angle": "side view", "mood": "analytical, focused"}
 
 ### Example 2
 POST: "Built a dashboard that tracks all my metrics in one place. Finally have visibility into what matters."
@@ -73,7 +73,7 @@ SCENE: {"action": "celebrating with confetti falling, arms raised", "setting_nam
 
 ### Example 2
 POST: "Finally merged the PR that's been open for a month. Bigger relief than I expected."
-SCENE: {"action": "leaning back in a chair, fist pump, big grin", "setting_name": "office", "setting_detail": "glass-walled meeting cabins visible in the background, a wall clock with a blank face, a whiteboard covered in diagram sketches and arrows, a closed laptop on a nearby desk", "angle": "three-quarter view", "mood": "relieved, triumphant"}
+SCENE: {"action": "leaning back in a chair, fist pump, big grin", "setting_name": "office", "setting_detail": "empty glass-walled meeting cabins visible in the background, a wall clock with a blank face, a whiteboard covered in diagram sketches and arrows, a closed laptop on a nearby desk", "angle": "three-quarter view", "mood": "relieved, triumphant"}
 
 ---
 
@@ -97,7 +97,7 @@ SCENE: {"action": "reading a thick book in an armchair", "setting_name": null, "
 
 ### Example 2
 POST: "The biggest thing I got wrong early in my career was believing more abstraction always meant better code. Now I wait until I have two real use cases before abstracting anything."
-SCENE: {"action": "looking out a window, one hand on the glass, contemplative", "setting_name": "office", "setting_detail": "glass-walled meeting cabins visible in the background, a wall clock with a blank face, a whiteboard covered in diagram sketches and arrows, a closed laptop on a nearby desk", "angle": "side view", "mood": "quiet, reflective"}
+SCENE: {"action": "looking out a window, one hand on the glass, contemplative", "setting_name": "office", "setting_detail": "empty glass-walled meeting cabins visible in the background, a wall clock with a blank face, a whiteboard covered in diagram sketches and arrows, a closed laptop on a nearby desk", "angle": "side view", "mood": "quiet, reflective"}
 
 ---
 
@@ -122,3 +122,15 @@ SCENE: {"action": "resetting toppled dominoes one at a time, focused", "setting_
 ### Example 2
 POST: "Kept tuning the same config for a week. Fix one metric, another one gets worse. Feels like squeezing a balloon."
 SCENE: {"action": "juggling with a strained expression, one ball about to drop", "setting_name": null, "setting_detail": null, "angle": "front view", "mood": "strained, determined"}
+
+---
+
+## MOOD: collaboration_without_people
+
+### Example 1
+POST: "The best thing our team did this quarter was stop working in silos. Design, backend and support now share one board, and handoffs that took days take an hour."
+SCENE: {"action": "pinning the last thread between sticky notes on a crowded board, threads pulling taut", "setting_name": null, "setting_detail": "against a cork wall, soft daylight", "angle": "three-quarter view", "mood": "energized, connected"}
+
+### Example 2
+POST: "Mentored three junior engineers this year. Watching them run their own design reviews now is the most rewarding part of my job."
+SCENE: {"action": "pulling out one of several empty chairs at a round table, a video-call window with faceless abstract avatars on a laptop", "setting_name": null, "setting_detail": "on a wooden floor, warm lamp light", "angle": "side view", "mood": "warm, proud"}

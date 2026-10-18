@@ -24,7 +24,7 @@ Two structural changes made 2026-07-31, from a live brainstorm with the user
    consistency possible (see SceneAsset in db/models.py): setting_name is a
    short slug for a real recurring place (e.g. "office") ONLY when the
    scene's backdrop is a place worth remembering across posts -- left null
-   for one-off metaphor scenes (dominoes, a mirror, confetti) where the
+   for one-off metaphor scenes (dominoes, a compass, confetti) where the
    backdrop is incidental. post_service.py owns the actual asset lookup/
    reuse/creation logic (DB access doesn't belong in this agent module);
    this agent only ever proposes a name + a detail description as a
@@ -42,9 +42,13 @@ real translation/compression task, not a mechanical one).
 from __future__ import annotations
 
 import json
+import logging
 
 from ..services.llm_client import LLMRequest
 from .content_sources import load_scene_examples
+from .scene_solo import make_solo, people_terms_in
+
+log = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = """You translate a LinkedIn post's content and mood into ONE visual scene \
 for a character illustration that will accompany the post.
@@ -61,7 +65,7 @@ post is loosely "analytical" is exactly the mistake that produces generic, forge
 illustrations (confirmed live on this system -- a post about an iterative, frustrating \
 struggle between automation and control got the same bland "monitor with a bar chart" \
 scene as any other calm post, because nothing forced a look at what THIS post specifically \
-said). Look for the post's own words, metaphors, and specific tension -- a mirror, a \
+said). Look for the post's own words, metaphors, and specific tension -- a compass, a \
 tug-of-war, a maze, dominoes, juggling, climbing -- and let THAT drive the action. Only once \
 you have a real idea, move to composition.
 
@@ -74,7 +78,7 @@ though the metaphor itself was apt). Instead, choose a REAL, PHYSICALLY PLAUSIBL
 object that carries the same underlying feeling without acting out the idiom's literal \
 imagery -- e.g. for "whack-a-mole" (fix one thing, another pops up), something like capping \
 one leak while another starts hissing, or stacking books that keep toppling from the other \
-end, NOT a literal mole-and-hammer game. Dominoes, juggling, a mirror, a maze, climbing are \
+end, NOT a literal mole-and-hammer game. Dominoes, juggling, a compass, a maze, climbing are \
 all safe precisely because they're real things a person can plausibly do or hold -- the test \
 is: could a photographer plausibly stage this as a real moment, not a costume or toy?
 
@@ -100,13 +104,28 @@ postings) all converged on "a balance scale" the moment that object appeared in 
 instruction, the exact over-anchoring mistake this system has hit repeatedly. If a balance \
 scale is not the single best fit for what THIS post specifically describes, do not use it.
 
+THE CHARACTER IS THE ONLY FIGURE IN THE IMAGE -- ALWAYS. Never other people, never hands \
+or arms of anyone else, never a crowd, audience, team, colleague, partner, mentor, client \
+or silhouette, never a mirror, reflection, twin, clone, or second copy of the character \
+(confirmed live: a scene for a collaboration post ending "determined, collaborative" \
+rendered TWO copies of the character -- the image model can only draw one person, so any \
+hint of a second figure becomes a duplicate). When a post is about collaboration, \
+teamwork, meetings, mentoring, hiring, or community, show it through OBJECTS and the \
+ENVIRONMENT the character acts on alone: a wall dense with sticky notes, \
+connected nodes or threads on a board, chat bubbles with no faces, a row of empty chairs \
+around a table, a video-call window showing abstract avatars with no faces, a shared \
+whiteboard, puzzle pieces clicking into place. Words like "together", "partners", "team \
+of", "colleagues", "collaborative", "with others", "two", "both", "another" must never \
+describe figures in the scene -- not in "action", not in "setting_detail", not in "mood" \
+(use "connected", "coordinated", "in sync" style wording about objects instead).
+
 STEP 2 -- SETTING: decide whether this scene's backdrop is a real, recurring PLACE this \
 character would plausibly return to across many future posts (an office, a coffee shop, a \
 home desk) -- if so, name it with a short lowercase slug (e.g. "office", "coffee_shop", \
 "home_desk") and describe it with a few concrete, distinctive, RECOGNIZABLE physical \
 details (not just "office" alone -- a bare setting word renders as a flat character \
 floating on nothing). If instead the scene is built around a specific symbolic object or \
-action (dominoes, a mirror, confetti, a wall of sticky notes) where the backdrop is \
+action (dominoes, a compass, confetti, a wall of sticky notes) where the backdrop is \
 incidental to the idea, leave "setting_name" unnamed/null -- forcing a place onto a \
 metaphor scene dilutes the idea instead of supporting it.
 
@@ -167,7 +186,7 @@ dashboard-style layout with real content.
 - ALWAYS give any named setting at least 2-3 concrete physical details -- never just the \
 bare word "office"/"home" on its own; a bare setting word has been confirmed live to render \
 as a flat, isolated character floating on a plain background with no environment at all.
-- No other people, named companies, or real trademarks/brands.
+- No named companies or real trademarks/brands.
 - One character, one clear action. Not a collage of multiple moments.
 - Match the post's actual mood AND intensity, not just its topic -- a debugging-frustration \
 post should NOT get a celebration scene; a genuinely excited milestone post (words like \
@@ -208,6 +227,23 @@ def build_scene_request(post_text: str) -> LLMRequest:
     ], temperature=0.7, reasoning=True, response_format="json")
 
 
+def _solo_scene(scene: dict) -> dict:
+    """Deterministic backstop for the "the mascot is the only figure" rule
+    (scene_solo.py): people/duplicate wording is rewritten in place -- no
+    re-ask (one task per step). A field left empty gets a neutral value."""
+    found = [t for k in ("action", "setting_detail", "angle", "mood")
+             if isinstance(scene.get(k), str) for t in people_terms_in(scene[k])]
+    if not found:
+        return scene
+    log.warning("scene mentions other figures %s; rewriting to a solo scene", found)
+    fallback = _fallback_scene()
+    solo = dict(scene)
+    for key in ("action", "setting_detail", "angle", "mood"):
+        if isinstance(solo.get(key), str):
+            solo[key] = make_solo(solo[key]) or fallback[key]
+    return solo
+
+
 def parse_scene(raw: str) -> dict:
     try:
         result = json.loads(raw)
@@ -215,4 +251,4 @@ def parse_scene(raw: str) -> dict:
         return _fallback_scene()
     if not isinstance(result, dict) or not all(k in result for k in _REQUIRED_KEYS):
         return _fallback_scene()
-    return result
+    return _solo_scene(result)

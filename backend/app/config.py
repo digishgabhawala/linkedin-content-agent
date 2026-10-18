@@ -35,6 +35,44 @@ class Settings(BaseSettings):
     skill_path: str = str(_BACKEND_DIR / "content_config/skill.md")
     example_posts_path: str = str(_BACKEND_DIR / "content_config/example_posts.md")
     scene_examples_path: str = str(_BACKEND_DIR / "content_config/scene_examples.md")
+    # The mascot is always the only figure in a render (app/agents/scene_solo.py).
+    # Words/phrases that put another person -- or a second copy -- into a
+    # scene; any scene_agent output containing one is rewritten. Matched
+    # case-insensitively on word boundaries. Override with a JSON list env var.
+    scene_people_terms: list[str] = [
+        "people", "person", "persons", "someone", "somebody", "someone's",
+        "colleague", "colleagues", "coworker", "coworkers", "co-worker", "co-workers",
+        "teammate", "teammates", "team", "teams", "teamwork", "team members",
+        "crowd", "crowds", "audience", "attendees", "meeting attendees",
+        "in a meeting", "leading a meeting", "running a meeting", "during a meeting",
+        "partner", "partners", "group", "groups", "together", "side by side",
+        "collaborative", "collaboratively", "collaborating", "collaboration",
+        "collaborator", "collaborators", "mentor", "mentoring", "mentee", "mentees",
+        "manager", "boss", "client", "clients", "customer", "customers",
+        "stakeholder", "stakeholders", "peer", "peers", "friend", "friends",
+        "family", "staff", "employees", "interviewer", "students",
+        "each other", "one another", "both of them", "two of them", "the others",
+        "handshake", "shaking hands", "high-five", "high-fiving", "fist bump",
+        "fist-bumping", "hugging", "another hand", "other hands", "helping hand",
+        "reflection", "reflections", "reflected", "mirror image", "second copy",
+        "duplicate", "duplicates", "clone", "clones", "twin", "twins",
+        "doppelganger", "silhouette", "silhouettes", "version of himself",
+        "version of herself", "versions of himself", "past self", "future self",
+        "younger self", "older self",
+    ]
+    # Counting/other words ("two", "another", "both"...) only put a second
+    # figure into the scene when they qualify one of these nouns -- "two
+    # monitors" or "another domino" stay as they are.
+    scene_figure_qualifiers: list[str] = [
+        "two", "three", "four", "both", "another", "other", "others", "second",
+        "several", "multiple", "fellow", "extra", "more",
+    ]
+    scene_figure_nouns: list[str] = [
+        "person", "people", "man", "men", "woman", "women", "guy", "guys", "kid",
+        "kids", "engineer", "engineers", "developer", "developers", "character",
+        "characters", "figure", "figures", "member", "members", "version",
+        "versions", "copy", "copies", "self", "selves", "mascot", "mascots",
+    ]
 
     task_queue_url: str = "http://127.0.0.1:8000"
     # This app's machine key for the task-queue (sent as X-API-Key). Its
