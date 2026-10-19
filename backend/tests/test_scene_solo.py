@@ -125,6 +125,10 @@ KEEP = [
     # live scenes (post dd3415df..., d851b3fe..., ddf71c3e...) -- objects only
     "weaving a tangle of threads between multiple points, some connected, others loose",
     "resetting toppled dominoes one at a time",
+    "connecting nodes on a whiteboard, focused expression",
+    ("untangling a knot of cables, one strand at a time, on a cluttered floor with "
+     "scattered cables and a laptop nearby"),
+    "placing the last puzzle piece, interlocking parts aligning perfectly",
     "a long desk with two monitors",
     # object collectives
     "arranging a group of sticky notes into columns",
