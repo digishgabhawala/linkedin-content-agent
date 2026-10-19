@@ -50,6 +50,7 @@ class Settings(BaseSettings):
         "collaborator", "collaborators", "mentor", "mentoring", "mentee", "mentees",
         "manager", "boss", "client", "clients", "customer", "customers",
         "stakeholder", "stakeholders", "peer", "peers", "friend", "friends",
+        "everyone", "everybody", "crew", "crews", "squad", "squads",
         "family", "staff", "employees", "interviewer", "students",
         "each other", "one another", "both of them", "two of them", "the others",
         "handshake", "shaking hands", "high-five", "high-fiving", "fist bump",
@@ -63,6 +64,18 @@ class Settings(BaseSettings):
     # Counting/other words ("two", "another", "both"...) only put a second
     # figure into the scene when they qualify one of these nouns -- "two
     # monitors" or "another domino" stay as they are.
+    # Collective/quantity nouns ("a group of", "a team of", "a pair of"...)
+    # count only when what follows "of" is a person/figure noun or people
+    # term: "a group of sticky notes" stays, "a group of colleagues" goes.
+    # A collective that is ALSO in scene_people_terms ("team", "group",
+    # "crew") still counts on its own ("the team celebrates") -- just not
+    # when "of <objects>" follows it.
+    scene_collective_terms: list[str] = [
+        "group", "groups", "team", "teams", "crew", "crews", "squad", "squads",
+        "pair", "pairs", "couple", "bunch", "cluster", "clusters", "handful",
+        "row", "rows", "circle", "line", "panel", "cohort", "army", "swarm",
+        "fleet", "set", "collection", "dozen", "dozens", "hundreds", "lots",
+    ]
     scene_figure_qualifiers: list[str] = [
         "two", "three", "four", "both", "another", "other", "others", "second",
         "several", "multiple", "fellow", "extra", "more",
@@ -72,6 +85,8 @@ class Settings(BaseSettings):
         "kids", "engineer", "engineers", "developer", "developers", "character",
         "characters", "figure", "figures", "member", "members", "version",
         "versions", "copy", "copies", "self", "selves", "mascot", "mascots",
+        "robot", "robots", "human", "humans", "worker", "workers", "designer",
+        "designers", "expert", "experts", "folks",
     ]
 
     task_queue_url: str = "http://127.0.0.1:8000"

@@ -114,3 +114,90 @@ def test_every_worked_example_scene_is_solo():
         scene = json.loads(raw)
         for key in ("action", "setting_detail", "angle", "mood"):
             assert people_terms_in(scene[key]) == [], (key, scene[key])
+
+
+# ---------------------------------------------------------------------------
+# Precision: the rule is "a collective/quantity word only counts when it
+# qualifies a person/figure noun; standalone people words always count".
+# ---------------------------------------------------------------------------
+
+KEEP = [
+    # live scenes (post dd3415df..., d851b3fe..., ddf71c3e...) -- objects only
+    "weaving a tangle of threads between multiple points, some connected, others loose",
+    "resetting toppled dominoes one at a time",
+    "a long desk with two monitors",
+    # object collectives
+    "arranging a group of sticky notes into columns",
+    "a cluster of nodes glowing on a dark screen",
+    "glancing between both monitors",
+    "two coffee cups on the desk",
+    "peeling off another sticky note",
+    "a pair of glasses resting on a notebook",
+    "a bunch of cables tangled under the desk",
+    "a row of server racks humming",
+    "a handful of puzzle pieces scattered on the table",
+    "groups of colored blocks sorted by size",
+    "a team-colored kanban board with three columns",
+    "a stack of books and a small toy robot on the shelf",
+    "multiple browser tabs open",
+    "a circle of empty chairs around a round table",
+    "a video-call window with abstract avatar circles",
+    "several faceless chat bubbles floating above the laptop",
+]
+
+REMOVE = [
+    "a group of colleagues gathered around the desk",
+    "brainstorming with two engineers",
+    "high-fiving her teammate",
+    "everyone cheering in the background",
+    "people in the background",
+    "a crowd watching from the doorway",
+    "the team celebrates the launch",
+    "a team of robots assembling a server",
+    "two robots carrying boxes",
+    "a couple of friends laughing",
+    "a pair of developers pairing at a monitor",
+    "a cluster of engineers around a whiteboard",
+    "partner logos on a banner",
+    "the group applauding",
+    "holding a pair of scissors, the team of three cheering",
+    "a group of us around the laptop",
+    "a crew of designers sketching",
+    "everybody raising a glass",
+    "determined, collaborative",
+    "another engineer waving",
+    "both of them laughing",
+]
+
+
+@pytest.mark.parametrize("phrase", KEEP)
+def test_object_collectives_are_not_people(phrase):
+    assert people_terms_in(phrase) == [], phrase
+    assert make_solo(phrase) == phrase
+
+
+@pytest.mark.parametrize("phrase", REMOVE)
+def test_person_phrasing_is_detected_and_removed(phrase):
+    assert people_terms_in(phrase), phrase
+    cleaned = make_solo(phrase) or ""
+    assert people_terms_in(cleaned) == [], cleaned
+
+
+@pytest.mark.parametrize("action, expected", [
+    ("arranging sticky notes with a group of colleagues, smiling",
+     "arranging sticky notes, smiling"),
+    ("sorting a group of sticky notes with a team of engineers",
+     "sorting a group of sticky notes"),
+    ("brainstorming with two engineers at a whiteboard",
+     "brainstorming at a whiteboard"),
+    ("stacking a cluster of nodes, the team celebrates",
+     "stacking a cluster of nodes"),
+])
+def test_mixed_scenes_keep_the_objects_and_lose_the_people(action, expected):
+    assert parse_scene(_scene(action=action))["action"] == expected
+
+
+def test_collective_words_are_configurable(monkeypatch):
+    monkeypatch.setattr(settings, "scene_collective_terms", ["flock"])
+    assert people_terms_in("a flock of engineers")
+    assert people_terms_in("a flock of paper planes") == []
