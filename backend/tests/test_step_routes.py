@@ -1,8 +1,14 @@
 """HTTP layer: compute actions acknowledge at once; status checks advance."""
-import httpx
+import json
 
+import httpx
+import pytest
+
+from app.api import routes
 from app.auth import LOCAL_USER_ID
+from app.config import settings
 from app.db.database import get_db
+from app.db.models import Post
 from app.main import app
 from tests.test_steps import LONG_BRIEF, FakeQueue
 
@@ -10,6 +16,30 @@ from tests.test_steps import LONG_BRIEF, FakeQueue
 class DownQueue(FakeQueue):
     async def post(self, url, json, timeout):
         raise httpx.ConnectError("down")
+
+
+@pytest.mark.parametrize("step", ["rewrite", "judge"])
+def test_automatic_quality_steps_expose_attempt_progress(step):
+    post = Post(
+        active_step=json.dumps({"name": step, "task_id": "t1"}),
+        step_context=json.dumps({"automatic": True, "attempt": 2}),
+    )
+
+    view = routes._active_step_view(post)
+
+    assert view["attempt"] == 2
+    assert view["max_attempts"] == settings.max_recalibration_passes
+
+
+def test_manual_quality_step_does_not_expose_attempt_progress():
+    post = Post(
+        active_step=json.dumps({"name": "judge", "task_id": "t1"}),
+        step_context=json.dumps({"automatic": False, "attempt": 2}),
+    )
+
+    view = routes._active_step_view(post)
+
+    assert "attempt" not in view and "max_attempts" not in view
 
 
 def test_create_acknowledges_immediately_with_the_active_step(api):

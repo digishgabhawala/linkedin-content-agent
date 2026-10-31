@@ -94,7 +94,7 @@ async function mockPosts(page: Page, posts: Post[]) {
       return
     }
     if (pathname.endsWith('/posts/post-demo')) {
-      await route.fulfill({ json: demoPost })
+      await route.fulfill({ json: posts.find(post => post.id === 'post-demo') ?? demoPost })
       return
     }
     await route.fallback()
@@ -102,6 +102,23 @@ async function mockPosts(page: Page, posts: Post[]) {
 }
 
 test.describe('Posts workspace', () => {
+  test('shows automatic rewrite attempt progress', async ({ page }) => {
+    const rewritingPost: Post = {
+      ...demoPost,
+      active_step: {
+        name: 'rewrite',
+        started_at: '2026-10-16T07:01:00Z',
+        attempt: 2,
+        max_attempts: 3,
+        task: null,
+      },
+    }
+    await mockPosts(page, [rewritingPost])
+    await page.goto('#posts?post=post-demo')
+
+    await expect(page.getByText('Rewriting — attempt 2 of 3…')).toBeVisible()
+  })
+
   test('presents a focused empty state on desktop', async ({ page }, testInfo) => {
     test.skip(testInfo.project.name !== 'desktop-chromium', 'Desktop empty-state coverage')
     await mockPosts(page, [])

@@ -212,8 +212,13 @@ def _active_step_view(post: Post) -> dict | None:
     active = steps.active_step(post)
     if active is None:
         return None
-    return {"name": active["name"], "started_at": active.get("started_at"),
+    view = {"name": active["name"], "started_at": active.get("started_at"),
             "task": getattr(post, "active_task", None)}
+    ctx = json.loads(post.step_context) if post.step_context else {}
+    if active["name"] in ("rewrite", "judge") and ctx.get("automatic"):
+        view.update(attempt=ctx.get("attempt", 1),
+                    max_attempts=settings.max_recalibration_passes)
+    return view
 
 
 def _serialize_post(post: Post) -> dict:

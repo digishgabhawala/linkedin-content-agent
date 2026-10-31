@@ -148,6 +148,8 @@ export interface RendererStatus {
 export interface ActiveStep {
   name: 'category' | 'clarify' | 'draft' | 'rewrite' | 'judge' | 'escalation' | 'scene' | 'image'
   started_at: string | null
+  attempt?: number
+  max_attempts?: number
   task: {
     status: 'queued' | 'claimed' | 'done' | 'failed' | string
     claimed_by: string | null

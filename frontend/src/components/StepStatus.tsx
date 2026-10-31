@@ -10,8 +10,8 @@ const STEP_LABELS: Record<string, string> = {
   category: 'Understanding your brief',
   clarify: 'Thinking of a clarifying question',
   draft: 'Writing a draft',
-  rewrite: 'Rewriting the draft',
-  judge: 'Scoring the draft',
+  rewrite: 'Rewriting',
+  judge: 'Checking quality',
   escalation: 'Working out what is missing',
   scene: 'Deriving the image scene',
 }
@@ -21,6 +21,9 @@ export function StepStatus({ post, onRetry, loading }: Props) {
   const step = post.active_step
   if (step && step.name !== 'image') {
     const task = step.task
+    const attempt = step.attempt !== undefined && step.max_attempts !== undefined
+      ? ` — attempt ${step.attempt} of ${step.max_attempts}`
+      : ''
     const where = !task
       ? 'Submitted to the task queue…'
       : task.status === 'claimed'
@@ -30,7 +33,7 @@ export function StepStatus({ post, onRetry, loading }: Props) {
       <section className="post-status-card post-status-card--info" aria-live="polite">
         <span className="post-status-card__indicator" aria-hidden="true" />
         <div>
-          <p>{STEP_LABELS[step.name] ?? step.name}…</p>
+          <p>{STEP_LABELS[step.name] ?? step.name}{attempt}…</p>
           <span>{where}</span>
         </div>
       </section>
