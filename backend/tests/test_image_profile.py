@@ -95,6 +95,12 @@ def test_failure_kind_insufficient_memory():
     assert image_failure_kind(post) == "insufficient_memory"
 
 
+def test_failure_kind_expired_queue_wait():
+    post = Post(owner_id=LOCAL_USER_ID, status="image_failed",
+                image_job_error="expired: deadline passed before a worker was free")
+    assert image_failure_kind(post) == "expired"
+
+
 def test_worker_lost_handles_naive_timestamp():
     past = (datetime.utcnow() - timedelta(minutes=1)).isoformat()  # no timezone suffix
     assert is_worker_lost(_claimed(past)) is True

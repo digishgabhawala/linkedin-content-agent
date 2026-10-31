@@ -280,6 +280,23 @@ def test_failed_image_keeps_image_failure_fields(db):
     assert post.image_job_error.startswith("insufficient_memory:")
 
 
+def test_image_retry_gets_a_fresh_queue_deadline(db):
+    q = FakeQueue()
+    post = Post(owner_id=LOCAL_USER_ID, character_id="gtee_dev", brief="b",
+                status="locked", post_text="p", scene_instruction="waving",
+                seed=3, clarify_transcript="[]")
+    db.add(post)
+    db.commit()
+    post = _run(steps.start_image(db, q, post.id, "full"))
+    first_deadline = q.latest()["payload"]["deadline_at"]
+    q.finish(error="expired: deadline passed before a worker was free")
+    post = _run(steps.advance(db, q, post))
+
+    _run(steps.retry_step(db, q, post.id))
+
+    assert q.latest()["payload"]["deadline_at"] > first_deadline
+
+
 def test_two_pollers_never_submit_the_next_step_twice(tmp_path):
     engine = create_engine(f"sqlite:///{tmp_path / 'race.db'}")
     Base.metadata.create_all(engine)

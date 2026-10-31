@@ -194,7 +194,8 @@ nothing is written to a fixed system path.
 
 | Key | Default | What it does |
 |---|---|---|
-| `STEP_MAX_WAIT_MINUTES` | `60` | How long a queued step (text or image) may wait for a worker before it expires; then **Retry step** |
+| `STEP_MAX_WAIT_MINUTES` | `60` | How long a queued text step may wait for a worker before it expires; then **Retry step** |
+| `IMAGE_MAX_WAIT_MINUTES` | `120` | How long queued post images and hero candidates may wait for an image worker before they expire; an in-progress render is never aborted |
 | `DATABASE_URL` | *(unset -> SQLite at `DB_PATH`)* | where the app's data lives -- any SQLAlchemy URL, e.g. the Supabase pooler `postgresql+psycopg://...:6543/postgres` |
 | `DB_SCHEMA` | `linkedin` | Postgres schema for this app's tables (keeps them apart from other apps in the same Supabase project); ignored for SQLite |
 | `DB_PATH` | `posts.db` | SQLite file used only when `DATABASE_URL` is unset |

@@ -119,6 +119,20 @@ test.describe('Posts workspace', () => {
     await expect(page.getByText('Rewriting — attempt 2 of 3…')).toBeVisible()
   })
 
+  test('explains when an image expired before a worker claimed it', async ({ page }) => {
+    const expiredPost: Post = {
+      ...demoPost,
+      status: 'image_failed',
+      image_job_error: 'expired: deadline passed before a worker was free',
+      image_failure_kind: 'expired',
+    }
+    await mockPosts(page, [expiredPost])
+    await page.goto('#posts?post=post-demo')
+
+    await expect(page.getByRole('heading', { name: 'No image worker picked this up in time' })).toBeVisible()
+    await expect(page.getByText('Retry to place it back in the queue with a fresh wait window.')).toBeVisible()
+  })
+
   test('presents a focused empty state on desktop', async ({ page }, testInfo) => {
     test.skip(testInfo.project.name !== 'desktop-chromium', 'Desktop empty-state coverage')
     await mockPosts(page, [])

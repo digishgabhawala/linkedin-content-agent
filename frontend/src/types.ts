@@ -51,7 +51,7 @@ export interface Post {
   active_step: ActiveStep | null
   step_error: string | null
   can_retry_step: boolean
-  image_failure_kind: 'corrupt_output' | 'insufficient_memory' | null
+  image_failure_kind: 'corrupt_output' | 'insufficient_memory' | 'expired' | null
   image_profile: 'full' | 'lightning' | null
   image_started_at: string | null
   created_at: string | null

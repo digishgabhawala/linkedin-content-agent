@@ -93,9 +93,10 @@ class Settings(BaseSettings):
     # This app's machine key for the task-queue (sent as X-API-Key). Its
     # sha256 is registered in task-queue's SERVICE_API_KEYS.
     task_queue_api_key: str | None = None
-    # Max minutes a queued step (LLM or image) may wait for a worker before
-    # the worker discards it as expired; the user can then retry the step.
+    # Max minutes queued text/image work may wait for a worker before the
+    # worker discards it as expired; the user can then retry the step.
     step_max_wait_minutes: float = 60
+    image_max_wait_minutes: float = 120
     image_stall_timeout_minutes: int = 40
 
     # Login (same approach as task-queue's admin page): a Supabase session

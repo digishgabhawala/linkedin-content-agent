@@ -69,17 +69,22 @@ async def submit_text(client: httpx.AsyncClient, req: LLMRequest) -> str:
 async def submit_image(client: httpx.AsyncClient, payload: dict) -> str:
     # 240-min lease: a full render on a loaded Mac has taken ~2h (see
     # image_service history); heartbeating workers shorten it anyway.
-    return await _post_task(client, {"task_type": IMAGE_TASK_TYPE, "payload": payload,
-                                  "lease_minutes": 240})
+    deadline = datetime.now(timezone.utc) + timedelta(minutes=settings.image_max_wait_minutes)
+    return await _post_task(client, {
+        "task_type": IMAGE_TASK_TYPE,
+        "payload": {**payload, "deadline_at": deadline.isoformat()},
+        "lease_minutes": 240,
+    })
 
 
 async def submit_hero_candidate(client: httpx.AsyncClient, character_card: dict,
                                 seed: int, profile: str) -> str:
     """Enqueue one independently retryable hero candidate."""
+    deadline = datetime.now(timezone.utc) + timedelta(minutes=settings.image_max_wait_minutes)
     return await _post_task(client, {
         "task_type": HERO_CANDIDATE_TASK_TYPE,
         "payload": {"character_card": character_card, "seed": seed,
-                    "profile": profile},
+                    "profile": profile, "deadline_at": deadline.isoformat()},
         "lease_minutes": 240,
         # The producer promotes completed candidates to its own durable
         # bucket; keep the temporary queue artifact long enough for a user

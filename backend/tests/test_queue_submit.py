@@ -67,11 +67,13 @@ def test_submit_does_not_require_an_online_worker():
     assert q.posted is not None
 
 
-def test_submit_image_uses_long_lease():
+def test_submit_image_uses_long_lease_and_queue_deadline():
     q = Queue()
     payload = {"character_id": "gtee_dev", "task": "waving", "seed": 1, "profile": "lightning"}
     assert asyncio.run(submit_image(q, payload)) == "task-9"
     assert q.posted[1]["task_type"] == "image_generation" and q.posted[1]["lease_minutes"] == 240
+    deadline = datetime.fromisoformat(q.posted[1]["payload"]["deadline_at"])
+    assert deadline > datetime.now(timezone.utc)
 
 
 def test_submit_hero_candidate_uses_dedicated_type_and_retention():
@@ -82,8 +84,9 @@ def test_submit_hero_candidate_uses_dedicated_type_and_retention():
 
     body = q.posted[1]
     assert body["task_type"] == "hero_candidate_generation"
-    assert body["payload"] == {
-        "character_card": card, "seed": 1003, "profile": "full"}
+    assert body["payload"]["character_card"] == card
+    assert body["payload"]["seed"] == 1003 and body["payload"]["profile"] == "full"
+    assert datetime.fromisoformat(body["payload"]["deadline_at"]) > datetime.now(timezone.utc)
     assert body["lease_minutes"] == 240 and body["retention_hours"] == 48
 
 

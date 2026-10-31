@@ -93,7 +93,14 @@ export function ImageStatus({ post, onRetry, onRetryLightning }: Props) {
   if (post.status === 'image_failed') {
     return (
       <section className="post-panel post-panel--danger" role="alert">
-        {post.image_failure_kind === 'corrupt_output' ? (
+        {post.image_failure_kind === 'expired' ? (
+          <>
+            <h3 className="post-attention-heading">No image worker picked this up in time</h3>
+            <p className="post-attention-copy">
+              Retry to place it back in the queue with a fresh wait window.
+            </p>
+          </>
+        ) : post.image_failure_kind === 'corrupt_output' ? (
           <>
             <h3 className="post-attention-heading">The image came back blank</h3>
             <p className="post-attention-copy">
