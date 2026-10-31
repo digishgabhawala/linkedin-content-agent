@@ -25,7 +25,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 
 import httpx
-from sqlalchemy import update
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from ..agents.category_agent import build_category_request, parse_category
@@ -327,12 +327,32 @@ def _require_idle(post: Post) -> None:
 
 async def _begin(db: Session, client, post: Post, step: str, ctx: dict) -> Post:
     _require_idle(post)
+    # Flush before the network call so a new post has an id we can recover
+    # under if the queue accepts the task but the following commit fails.
+    db.flush()
+    intended = {column.key: getattr(post, column.key) for column in Post.__table__.columns}
     try:
         await _start(db, client, post, step, ctx)
     except llm_client.TaskQueueUnavailable:
         db.rollback()  # nothing half-applied: the user's input wasn't accepted either
         raise
-    db.commit()
+    try:
+        db.commit()
+    except Exception as exc:  # noqa: BLE001 -- preserve a retry path after an ambiguous save
+        db.rollback()
+        recovered = db.scalar(select(Post).where(
+            Post.id == intended["id"], Post.owner_id == intended["owner_id"]))
+        if recovered is None:
+            recovered = post
+            db.add(recovered)
+        for name, value in intended.items():
+            setattr(recovered, name, value)
+        error = f"could not record {step} task after submission: {exc}"
+        if step == "image":
+            recovered.status = "image_failed"
+            recovered.image_job_error = error
+        _record_failure(db, recovered, step, ctx, error)
+        return recovered
     db.refresh(post)
     return post
 

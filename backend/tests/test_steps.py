@@ -390,6 +390,28 @@ def test_claim_is_committed_before_any_network_wait(tmp_path):
     s.close()
 
 
+def test_failed_save_after_first_submission_becomes_retryable(db, monkeypatch):
+    q = FakeQueue()
+    real_commit = db.commit
+    failed = False
+
+    def fail_post_submit_commit_once():
+        nonlocal failed
+        if q.tasks and not failed:
+            failed = True
+            raise RuntimeError("database write failed")
+        real_commit()
+
+    monkeypatch.setattr(db, "commit", fail_post_submit_commit_once)
+
+    post = _run(steps.start_create(db, q, LONG_BRIEF, None, owner_id=LOCAL_USER_ID))
+
+    assert len(q.submitted()) == 1
+    assert post.id and db.get(Post, post.id) is post
+    assert post.active_step is None and steps.can_retry(post)
+    assert "could not record category task" in post.step_error
+
+
 class BadArtifactQueue(FakeQueue):
     async def get(self, url, timeout):
         if "/artifacts/" in url:
