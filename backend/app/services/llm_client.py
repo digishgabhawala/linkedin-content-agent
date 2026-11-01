@@ -105,3 +105,11 @@ async def get_artifact(client: httpx.AsyncClient, artifact_id: str) -> dict:
         f"{settings.task_queue_api_url}/artifacts/{artifact_id}", timeout=15)
     resp.raise_for_status()
     return resp.json()
+
+
+async def delete_artifact(client: httpx.AsyncClient, artifact_id: str) -> None:
+    resp = await client.delete(
+        f"{settings.task_queue_api_url}/artifacts/{artifact_id}", timeout=15)
+    if resp.status_code == 404:
+        return
+    resp.raise_for_status()
