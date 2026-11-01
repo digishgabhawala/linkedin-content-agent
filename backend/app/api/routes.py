@@ -459,7 +459,12 @@ async def daily_cleanup(
         db, client, now=datetime.utcnow(), days=settings.auto_archive_days)
     rows = image_cleanup.pending(db, location="queue_artifact", limit=100)
     await image_cleanup.attempt(db, rows, queue_client=client)
-    return {"archived": archived, "deletions_retried": len(rows)}
+    pruned = image_cleanup.prune_done(db, now=datetime.utcnow())
+    return {
+        "archived": archived,
+        "deletions_retried": len(rows),
+        "deletions_pruned": pruned,
+    }
 
 
 @router.get("/auth/me")

@@ -447,9 +447,8 @@ version:
 - [x] **Image archival / cleanup.** Archive idle posts, delete superseded
   renders and unpicked hero candidates, and provide a dry-run-first sweep for
   existing orphaned files.
-- **Deletion outbox retention.** Completed `image_deletions` rows are kept for
-  audit; add a retention policy and prune old completed rows when the history
-  becomes large enough to matter.
+- [x] **Deletion outbox retention.** Daily cleanup prunes completed
+  `image_deletions` rows after 30 days.
 - **Calibrate pillar weights against real data** once there's a body of
   real drafts to tune against (see Known issues above).
 

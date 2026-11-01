@@ -193,7 +193,11 @@ def test_daily_cleanup_runs_and_retries_pending(api, monkeypatch):
     )
 
     assert response.status_code == 200
-    assert response.json() == {"archived": 1, "deletions_retried": 1}
+    assert response.json() == {
+        "archived": 1,
+        "deletions_retried": 1,
+        "deletions_pruned": 0,
+    }
     with api.session_factory() as db:
         assert db.get(Post, post.id).archived_at is not None
         assert db.get(ImageDeletion, deletion_id).deleted_at is not None

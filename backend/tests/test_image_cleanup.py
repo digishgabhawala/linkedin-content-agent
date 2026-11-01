@@ -281,3 +281,39 @@ def test_pending_filters_owner_and_orders_oldest_first(db_session):
         db_session, location="queue_artifact", owner_id="user-a")
 
     assert [row.id for row in rows] == ["oldest", "newest"]
+
+
+def test_prune_done_removes_only_old_finished_rows(db_session):
+    now = datetime.utcnow()
+    old_finished = _deletion(
+        id="old-finished", deleted_at=now - timedelta(days=31))
+    recent_finished = _deletion(
+        id="recent-finished", deleted_at=now - timedelta(days=29))
+    old_pending = _deletion(
+        id="old-pending", created_at=now - timedelta(days=60))
+    db_session.add_all([old_finished, recent_finished, old_pending])
+    db_session.commit()
+
+    count = image_cleanup.prune_done(db_session, now=now)
+
+    assert count == 1
+    assert db_session.get(ImageDeletion, "old-finished") is None
+    assert db_session.get(ImageDeletion, "recent-finished") is not None
+    assert db_session.get(ImageDeletion, "old-pending") is not None
+
+
+def test_prune_done_respects_limit(db_session):
+    now = datetime.utcnow()
+    rows = [
+        _deletion(id=f"done-{days}", deleted_at=now - timedelta(days=days))
+        for days in (33, 32, 31)
+    ]
+    db_session.add_all(rows)
+    db_session.commit()
+
+    count = image_cleanup.prune_done(db_session, now=now, limit=2)
+
+    assert count == 2
+    assert db_session.get(ImageDeletion, "done-33") is None
+    assert db_session.get(ImageDeletion, "done-32") is None
+    assert db_session.get(ImageDeletion, "done-31") is not None

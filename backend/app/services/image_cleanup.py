@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import re
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from urllib.parse import urlsplit
 
 import httpx
@@ -163,3 +163,18 @@ def pending(
         statement = statement.where(ImageDeletion.owner_id == owner_id)
     statement = statement.order_by(ImageDeletion.created_at).limit(limit)
     return list(db.scalars(statement))
+
+
+def prune_done(
+        db: Session, *, now: datetime, older_than_days: int = 30,
+        limit: int = 500) -> int:
+    cutoff = _utc_naive(now) - timedelta(days=older_than_days)
+    statement = select(ImageDeletion).where(
+        ImageDeletion.deleted_at.is_not(None),
+        ImageDeletion.deleted_at < cutoff,
+    ).order_by(ImageDeletion.deleted_at).limit(limit)
+    rows = list(db.scalars(statement))
+    for row in rows:
+        db.delete(row)
+    db.commit()
+    return len(rows)
