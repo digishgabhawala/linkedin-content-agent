@@ -20,6 +20,7 @@ from ..db.models import (
     Character,
     HeroCandidate,
     HeroGenerationRun,
+    ImageDeletion,
     Post,
     PostDraft,
     SceneAsset,
@@ -422,7 +423,8 @@ def _serialize_hero_run(run: HeroGenerationRun) -> dict:
         "base_seed": run.base_seed,
         "requested_candidates": run.requested_candidates,
         "candidates": [_serialize_hero_candidate(candidate, run.character)
-                       for candidate in run.candidates],
+                       for candidate in run.candidates
+                       if candidate.status != "discarded"],
         "created_at": _utc_iso(run.created_at),
         "updated_at": _utc_iso(run.updated_at),
     }
@@ -558,9 +560,14 @@ async def start_hero_generation(
 
 
 @router.get("/characters/{character_id}/hero-generations")
-def list_hero_generations(character_id: str, db: Session = Depends(get_db),
-                          user: AuthUser = Depends(current_user)):
+async def list_hero_generations(character_id: str, db: Session = Depends(get_db),
+                                user: AuthUser = Depends(current_user)):
     _character_or_404(db, character_id, user)
+    rows = image_cleanup.pending(
+        db, location="linkedin_storage", owner_id=user.id, limit=20)
+    async with hgs.storage_client() as storage:
+        await image_cleanup.attempt(
+            db, rows, storage_client=storage, storage_auth=_storage_auth(user))
     runs = db.scalars(
         select(HeroGenerationRun)
         .where(HeroGenerationRun.character_id == character_id)
@@ -599,9 +606,9 @@ async def get_hero_generation(
 
 
 @router.post("/characters/{character_id}/hero-candidates/{candidate_id}/lock")
-def lock_hero_candidate(character_id: str, candidate_id: str,
-                        db: Session = Depends(get_db),
-                        user: AuthUser = Depends(current_user)):
+async def lock_hero_candidate(character_id: str, candidate_id: str,
+                              db: Session = Depends(get_db),
+                              user: AuthUser = Depends(current_user)):
     _character_or_404(db, character_id, user)
     try:
         character, candidate = hgs.lock_candidate(db, character_id, candidate_id)
@@ -609,6 +616,16 @@ def lock_hero_candidate(character_id: str, candidate_id: str,
         raise HTTPException(404, str(exc)) from exc
     except hgs.HeroCandidateNotReady as exc:
         raise HTTPException(409, str(exc)) from exc
+    rows = list(db.scalars(
+        select(ImageDeletion).where(
+            ImageDeletion.owner_id == user.id,
+            ImageDeletion.location == "linkedin_storage",
+            ImageDeletion.character_id == character_id,
+            ImageDeletion.deleted_at.is_(None),
+        ).order_by(ImageDeletion.created_at)))
+    async with hgs.storage_client() as storage:
+        await image_cleanup.attempt(
+            db, rows, storage_client=storage, storage_auth=_storage_auth(user))
     return {"character": _serialize_character(character),
             "candidate": _serialize_hero_candidate(candidate, character)}
 

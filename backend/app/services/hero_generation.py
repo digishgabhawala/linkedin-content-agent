@@ -13,17 +13,23 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import httpx
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..config import settings
-from ..db.models import Character, HeroCandidate, HeroGenerationRun
-from . import llm_client
+from ..db.models import (
+    Character,
+    HeroCandidate,
+    HeroGenerationRun,
+    ImageDeletion,
+    Post,
+)
+from . import image_cleanup, llm_client
 
-TERMINAL_CANDIDATE_STATUSES = frozenset({"ready", "failed"})
+TERMINAL_CANDIDATE_STATUSES = frozenset({"ready", "failed", "discarded"})
 VALID_PROFILES = frozenset({"full", "lightning"})
 MAX_CANDIDATES_PER_RUN = 12
 
@@ -63,7 +69,8 @@ def _validate_request(candidate_count: int, base_seed: int, profile: str) -> Non
 
 
 def _refresh_run_status(run: HeroGenerationRun) -> None:
-    statuses = {candidate.status for candidate in run.candidates}
+    statuses = {"ready" if candidate.status == "discarded" else candidate.status
+                for candidate in run.candidates}
     if statuses == {"ready"}:
         run.status = "completed"
     elif statuses == {"failed"}:
@@ -180,6 +187,7 @@ async def advance_generation(db: Session, client: httpx.AsyncClient,
     ``client`` talks to the task-queue; ``storage_client`` to Supabase Storage
     with ``storage_auth`` = (bearer token, apikey) -- the signed-in user's
     session when login is on, so the hosted app needs no service key."""
+    transport_rows = []
     for candidate in run.candidates:
         if candidate.status in TERMINAL_CANDIDATE_STATUSES or not candidate.task_id:
             continue
@@ -246,9 +254,19 @@ async def advance_generation(db: Session, client: httpx.AsyncClient,
         candidate.metadata_json = json.dumps(
             metadata, separators=(",", ":"), sort_keys=True)
         candidate.error = None
+        row = ImageDeletion(
+            owner_id=run.character.owner_id,
+            location="queue_artifact",
+            ref=artifact_id,
+            reason="candidate_transport",
+            character_id=run.character_id,
+        )
+        db.add(row)
+        transport_rows.append(row)
 
     _refresh_run_status(run)
     db.commit()
+    await image_cleanup.attempt(db, transport_rows, queue_client=client)
     db.refresh(run)
     return run
 
@@ -280,6 +298,51 @@ def lock_candidate(db: Session, character_id: str,
         raise HeroCandidateNotReady(
             f"hero candidate {candidate_id!r} is not ready to lock")
 
+    now = datetime.utcnow()
+    previous_candidate_id = character.hero_candidate_id
+    previous_image_url = character.hero_image_url
+    render_queued = db.scalar(
+        select(Post.id).where(
+            Post.owner_id == character.owner_id,
+            Post.character_id == character_id,
+            Post.status == "image_queued",
+        ).limit(1)) is not None
+    previous_not_before = now + timedelta(hours=4) if render_queued else None
+
+    other_candidates = db.scalars(
+        select(HeroCandidate)
+        .join(HeroGenerationRun)
+        .where(
+            HeroGenerationRun.character_id == character_id,
+            HeroCandidate.id != candidate.id,
+            HeroCandidate.status == "ready",
+        ).with_for_update()).all()
+    for other in other_candidates:
+        other.status = "discarded"
+        other.image_url = None
+        if other.storage_path:
+            image_cleanup.queue_storage_object(
+                db,
+                owner_id=character.owner_id,
+                path=other.storage_path,
+                reason="candidate_unpicked",
+                character_id=character_id,
+                not_before=(previous_not_before
+                            if other.id == previous_candidate_id else None),
+            )
+
+    if previous_candidate_id is None:
+        previous_path = image_cleanup.storage_path_from_url(previous_image_url)
+        if previous_path:
+            image_cleanup.queue_storage_object(
+                db,
+                owner_id=character.owner_id,
+                path=previous_path,
+                reason="candidate_unpicked",
+                character_id=character_id,
+                not_before=previous_not_before,
+            )
+
     if character.hero_asset_id != candidate.asset_id:
         character.hero_version = (character.hero_version or 0) + 1
     character.hero_asset_id = candidate.asset_id
@@ -289,8 +352,8 @@ def lock_candidate(db: Session, character_id: str,
     card = json.loads(candidate.run.card_json)
     character.display_name = card.get("display_name")
     character.personality = card.get("personality")
-    character.updated_at = datetime.utcnow()
-    candidate.selected_at = candidate.selected_at or datetime.utcnow()
+    character.updated_at = now
+    candidate.selected_at = candidate.selected_at or now
     db.commit()
     db.refresh(character)
     db.refresh(candidate)

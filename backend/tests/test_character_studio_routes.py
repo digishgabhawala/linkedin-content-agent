@@ -4,6 +4,7 @@ import pytest
 from app.api import routes
 from app.auth import AuthUser
 from app.config import settings
+from app.db.models import HeroCandidate, HeroGenerationRun, ImageDeletion
 from app.services import hero_generation
 from tests.test_steps import FakeQueue
 
@@ -23,6 +24,7 @@ class StudioQueue(FakeQueue):
     def __init__(self):
         super().__init__()
         self.uploads = []
+        self.storage_deletes = []
 
     async def post(self, url, json=None, timeout=None, content=None, headers=None):
         if "/storage/v1/object/" in url:
@@ -42,6 +44,12 @@ class StudioQueue(FakeQueue):
                 200, content=f"candidate:{url}".encode(),
                 request=httpx.Request("GET", url))
         return await super().get(url, timeout)
+
+    async def delete(self, url, headers=None, timeout=None):
+        if "/storage/v1/object/linkedin/" in url:
+            self.storage_deletes.append({"url": url, "headers": headers})
+            return httpx.Response(204, request=httpx.Request("DELETE", url))
+        return await super().delete(url, timeout)
 
 
 def _create(api):
@@ -154,15 +162,58 @@ def test_poll_promotes_candidates_and_lock_is_transactional(api, monkeypatch):
     assert locked["candidate"]["is_active_hero"] is True
     assert locked["candidate"]["selected_at"] is not None
 
-    # Re-lock is idempotent; choosing a different candidate creates v2.
+    # Re-lock is idempotent; the other ready option was discarded by the lock.
     same = api.post(
         f"{API}/characters/new_dev/hero-candidates/{first['id']}/lock").json()
     assert same["character"]["hero_version"] == 1
     other = api.post(
         f"{API}/characters/new_dev/hero-candidates/{second['id']}/lock").json()
-    assert other["character"]["hero_version"] == 2
-    assert other["character"]["hero_asset_id"] == second["asset_id"]
-    assert other["character"]["hero_candidate_id"] == second["id"]
+    assert other["detail"].endswith("is not ready to lock")
+
+
+def test_run_serializer_hides_discarded(api):
+    _create(api)
+    with api.session_factory() as db:
+        run = HeroGenerationRun(
+            id="serialized-run", character_id="new_dev", card_json="{}",
+            profile="full", base_seed=1000, requested_candidates=2,
+            status="completed")
+        run.candidates = [
+            HeroCandidate(id="visible", seed=1000, status="ready"),
+            HeroCandidate(id="hidden", seed=1001, status="discarded"),
+        ]
+        db.add(run)
+        db.commit()
+        db.refresh(run)
+
+        serialized = routes._serialize_hero_run(run)
+
+    assert [candidate["id"] for candidate in serialized["candidates"]] == ["visible"]
+
+
+def test_studio_list_retries_pending_storage_deletions(api, monkeypatch):
+    _create(api)
+    queue = _studio_queue(api, monkeypatch)
+    path = "characters/auth-disabled/new_dev/candidates/old.png"
+    with api.session_factory() as db:
+        db.add(ImageDeletion(
+            id="pending-delete", owner_id="auth-disabled",
+            location="linkedin_storage", ref=path,
+            reason="candidate_unpicked", character_id="new_dev"))
+        db.commit()
+
+    response = api.get(f"{API}/characters/new_dev/hero-generations")
+
+    assert response.status_code == 200
+    assert queue.storage_deletes == [{
+        "url": f"https://project.supabase.co/storage/v1/object/linkedin/{path}",
+        "headers": {
+            "Authorization": "Bearer service-secret",
+            "apikey": "service-secret",
+        },
+    }]
+    with api.session_factory() as db:
+        assert db.get(ImageDeletion, "pending-delete").deleted_at is not None
 
 
 def test_candidate_must_be_ready_and_belong_to_the_character(api, monkeypatch):

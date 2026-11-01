@@ -121,6 +121,14 @@ async def attempt(
             continue
         if row.not_before is not None and _utc_naive(row.not_before) > now:
             continue
+        if (row.reason == "candidate_unpicked" and row.not_before is not None
+                and row.character_id is not None
+                and db.scalar(select(Post.id).where(
+                    Post.owner_id == row.owner_id,
+                    Post.character_id == row.character_id,
+                    Post.status == "image_queued",
+                ).limit(1)) is not None):
+            continue
         if row.location == "queue_artifact" and queue_client is None:
             continue
         if row.location == "linkedin_storage" and (

@@ -1,15 +1,18 @@
 import asyncio
 import json
+from datetime import datetime, timedelta
 
 import httpx
 import pytest
 
 from app.config import settings
-from app.db.models import Character, HeroCandidate, HeroGenerationRun
-from app.services import hero_generation
+from app.db.models import Character, HeroCandidate, HeroGenerationRun, ImageDeletion, Post
+from app.services import hero_generation, image_cleanup
 from app.services.hero_generation import (
+    HeroCandidateNotReady,
     HeroGenerationError,
     advance_generation,
+    lock_candidate,
     start_generation,
 )
 
@@ -31,6 +34,7 @@ class HeroIO:
         self.tasks = {}
         self.submissions = []
         self.gone_artifacts = set()
+        self.deleted = []
 
     async def post(self, url, json=None, content=None, headers=None, timeout=None):
         if url.endswith("/tasks"):
@@ -54,6 +58,10 @@ class HeroIO:
                              url=url)
         raise AssertionError(f"Storage call on the queue client: GET {url}")
 
+    async def delete(self, url, timeout=None):
+        self.deleted.append(url)
+        return _response(204, url=url)
+
     def finish(self, task_id, artifact_id, seed):
         self.tasks[task_id] = {
             "id": task_id,
@@ -73,6 +81,7 @@ class StorageIO:
         self.upload_status = upload_status
         self.download_status = download_status
         self.uploads = []
+        self.deleted = []
 
     async def get(self, url, timeout=None):
         assert url.startswith("https://queue-storage/"), url
@@ -81,6 +90,10 @@ class StorageIO:
     async def post(self, url, content=None, headers=None, timeout=None):
         self.uploads.append({"url": url, "content": content, "headers": headers})
         return _response(self.upload_status, json_body={"Key": "candidate"}, url=url)
+
+    async def delete(self, url, headers=None, timeout=None):
+        self.deleted.append(url)
+        return _response(204, url=url)
 
 
 USER_AUTH = ("user-access-token", "publishable-key")
@@ -101,6 +114,35 @@ def character(db_session):
     db_session.add(row)
     db_session.commit()
     return row
+
+
+def _ready_run(db, character, run_id, *candidate_ids):
+    run = HeroGenerationRun(
+        id=run_id,
+        character_id=character.character_id,
+        card_json=json.dumps(CARD),
+        profile="full",
+        base_seed=1000,
+        requested_candidates=len(candidate_ids),
+        status="completed",
+    )
+    for index, candidate_id in enumerate(candidate_ids):
+        run.candidates.append(HeroCandidate(
+            id=candidate_id,
+            seed=1000 + index,
+            status="ready",
+            asset_id=f"sha256:{candidate_id}",
+            storage_path=(
+                f"characters/{character.owner_id}/{character.character_id}/"
+                f"candidates/{candidate_id}.png"),
+            image_url=(
+                f"{BASE}/storage/v1/object/public/linkedin/characters/"
+                f"{character.owner_id}/{character.character_id}/candidates/"
+                f"{candidate_id}.png"),
+        ))
+    db.add(run)
+    db.commit()
+    return run
 
 
 def test_start_persists_run_and_submits_one_task_per_candidate(db_session, character):
@@ -164,6 +206,26 @@ def test_completed_tasks_are_promoted_with_the_users_token(
                and upload["headers"]["apikey"] == "publishable-key"
                for upload in storage.uploads)
     assert all(upload["headers"]["x-upsert"] == "true" for upload in storage.uploads)
+
+
+def test_promoted_candidate_queues_transport_artifact(
+        db_session, character, monkeypatch):
+    monkeypatch.setattr(settings, "supabase_url", BASE)
+    io = HeroIO()
+    run = _run(start_generation(
+        db_session, io, character.character_id, candidate_count=1, base_seed=2050))
+    io.finish(run.candidates[0].task_id, "artifact-transport", 2050)
+
+    run = _advance(db_session, io, run)
+
+    row = db_session.query(ImageDeletion).one()
+    assert run.candidates[0].status == "ready"
+    assert (row.owner_id, row.location, row.ref, row.reason, row.character_id) == (
+        "u-admin", "queue_artifact", "artifact-transport",
+        "candidate_transport", character.character_id)
+    assert row.deleted_at is not None
+    assert io.deleted == [
+        f"{settings.task_queue_api_url}/artifacts/artifact-transport"]
 
 
 def test_storage_client_never_carries_the_queue_key():
@@ -258,3 +320,107 @@ def test_invalid_generation_request_is_rejected(
     with pytest.raises(HeroGenerationError, match=message):
         _run(start_generation(
             db_session, HeroIO(), character.character_id, count, seed, profile))
+
+
+def test_lock_discards_other_ready_candidates_across_runs(db_session, character):
+    first = _ready_run(db_session, character, "run-1", "selected", "same-run")
+    other = _ready_run(db_session, character, "run-2", "other-run")
+
+    lock_candidate(db_session, character.character_id, first.candidates[0].id)
+
+    assert first.candidates[0].status == "ready"
+    assert [first.candidates[1].status, other.candidates[0].status] == [
+        "discarded", "discarded"]
+    assert first.candidates[1].image_url is None
+    assert other.candidates[0].image_url is None
+    rows = db_session.query(ImageDeletion).order_by(ImageDeletion.ref).all()
+    assert [row.ref for row in rows] == sorted([
+        first.candidates[1].storage_path, other.candidates[0].storage_path])
+    assert all(row.reason == "candidate_unpicked" for row in rows)
+
+
+def test_lock_keeps_in_progress_candidates(db_session, character):
+    run = _ready_run(db_session, character, "run-1", "selected")
+    pending = HeroCandidate(
+        id="pending", run_id=run.id, seed=2000, status="claimed", task_id="task-pending")
+    db_session.add(pending)
+    db_session.commit()
+
+    lock_candidate(db_session, character.character_id, run.candidates[0].id)
+
+    assert pending.status == "claimed"
+    assert db_session.query(ImageDeletion).count() == 0
+
+
+def test_lock_queues_previous_non_candidate_hero_in_owner_folder(
+        db_session, character, monkeypatch):
+    monkeypatch.setattr(settings, "supabase_url", BASE)
+    monkeypatch.setattr(settings, "storage_bucket", "linkedin")
+    old_path = "characters/u-admin/gtee_dev/hero.png"
+    character.hero_image_url = (
+        f"{BASE}/storage/v1/object/public/linkedin/{old_path}?v=old")
+    run = _ready_run(db_session, character, "run-1", "selected")
+
+    lock_candidate(db_session, character.character_id, run.candidates[0].id)
+
+    row = db_session.query(ImageDeletion).one()
+    assert (row.ref, row.reason, row.character_id) == (
+        old_path, "candidate_unpicked", character.character_id)
+
+
+def test_lock_skips_legacy_paths_outside_owner_folder(
+        db_session, character, monkeypatch):
+    monkeypatch.setattr(settings, "supabase_url", BASE)
+    monkeypatch.setattr(settings, "storage_bucket", "linkedin")
+    character.hero_image_url = (
+        f"{BASE}/storage/v1/object/public/linkedin/"
+        "characters/gtee_dev/hero.png")
+    run = _ready_run(db_session, character, "run-1", "selected")
+
+    lock_candidate(db_session, character.character_id, run.candidates[0].id)
+
+    assert db_session.query(ImageDeletion).count() == 0
+
+
+def test_lock_defers_previous_hero_while_render_queued(
+        db_session, character, monkeypatch):
+    monkeypatch.setattr(settings, "supabase_url", BASE)
+    monkeypatch.setattr(settings, "storage_bucket", "linkedin")
+    old_path = "characters/u-admin/gtee_dev/hero.png"
+    character.hero_image_url = (
+        f"{BASE}/storage/v1/object/public/linkedin/{old_path}")
+    run = _ready_run(db_session, character, "run-1", "selected")
+    post = Post(
+        id="queued-post", owner_id=character.owner_id,
+        character_id=character.character_id, brief="brief", status="image_queued")
+    db_session.add(post)
+    db_session.commit()
+    before = datetime.utcnow()
+
+    lock_candidate(db_session, character.character_id, run.candidates[0].id)
+
+    row = db_session.query(ImageDeletion).one()
+    assert before + timedelta(hours=4) <= row.not_before
+    storage = StorageIO()
+    row.not_before = datetime.utcnow() - timedelta(seconds=1)
+    db_session.commit()
+    _run(image_cleanup.attempt(
+        db_session, [row], storage_client=storage, storage_auth=USER_AUTH))
+    assert storage.deleted == []
+    assert row.deleted_at is None
+
+    post.status = "image_ready"
+    db_session.commit()
+    _run(image_cleanup.attempt(
+        db_session, [row], storage_client=storage, storage_auth=USER_AUTH))
+    assert storage.deleted == [
+        f"{BASE}/storage/v1/object/linkedin/{old_path}"]
+    assert row.deleted_at is not None
+
+
+def test_discarded_candidate_cannot_be_locked(db_session, character):
+    run = _ready_run(db_session, character, "run-1", "selected", "discarded")
+    lock_candidate(db_session, character.character_id, run.candidates[0].id)
+
+    with pytest.raises(HeroCandidateNotReady, match="not ready"):
+        lock_candidate(db_session, character.character_id, run.candidates[1].id)
