@@ -4,5 +4,11 @@
   "regions": [
     "hnd1"
   ],
-  "buildCommand": "cd frontend && npm ci && npm run build"
+  "buildCommand": "cd frontend && npm ci && npm run build",
+  "crons": [
+    {
+      "path": "/api/linkedin/internal/daily-cleanup",
+      "schedule": "30 21 * * *"
+    }
+  ]
 }

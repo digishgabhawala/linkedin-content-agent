@@ -143,3 +143,60 @@ def test_serialize_auto_archive_on_only_inside_notice_window(monkeypatch):
     assert archived_view["auto_archive_on"] is None
     assert inside_view["archived_at"] is None
     assert archived_view["archived_at"] is not None
+
+
+def test_daily_cleanup_503_without_secret(api, monkeypatch):
+    monkeypatch.setattr(settings, "cron_secret", "")
+    post = _post(api, updated_at=datetime.utcnow() - timedelta(days=31))
+
+    response = api.get(
+        f"{API}/internal/daily-cleanup",
+        headers={"Authorization": "Bearer "},
+    )
+
+    assert response.status_code == 503
+    with api.session_factory() as db:
+        assert db.get(Post, post.id).archived_at is None
+
+
+def test_daily_cleanup_401_wrong_or_missing_bearer(api, monkeypatch):
+    monkeypatch.setattr(settings, "cron_secret", "correct-secret")
+    post = _post(api, updated_at=datetime.utcnow() - timedelta(days=31))
+
+    assert api.get(f"{API}/internal/daily-cleanup").status_code == 401
+    response = api.get(
+        f"{API}/internal/daily-cleanup",
+        headers={"Authorization": "Bearer wrong-secret"},
+    )
+
+    assert response.status_code == 401
+    with api.session_factory() as db:
+        assert db.get(Post, post.id).archived_at is None
+
+
+def test_daily_cleanup_runs_and_retries_pending(api, monkeypatch):
+    monkeypatch.setattr(settings, "cron_secret", "cron-secret")
+    monkeypatch.setattr(settings, "auto_archive_days", 30)
+    post = _post(api, updated_at=datetime.utcnow() - timedelta(days=31))
+    with api.session_factory() as db:
+        deletion = ImageDeletion(
+            owner_id="user-b", location="queue_artifact", ref=ARTIFACT_ID,
+            reason="archived",
+        )
+        db.add(deletion)
+        db.commit()
+        deletion_id = deletion.id
+
+    response = api.get(
+        f"{API}/internal/daily-cleanup",
+        headers={"Authorization": "Bearer cron-secret"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"archived": 1, "deletions_retried": 1}
+    with api.session_factory() as db:
+        assert db.get(Post, post.id).archived_at is not None
+        assert db.get(ImageDeletion, deletion_id).deleted_at is not None
+    assert api.queue.deleted == [
+        f"{settings.task_queue_api_url}/artifacts/{ARTIFACT_ID}"
+    ]

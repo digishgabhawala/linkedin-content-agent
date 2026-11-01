@@ -1,4 +1,4 @@
-"""Login: Supabase token + allow list, cached; only health/config are public."""
+"""Login: Supabase token + allow list, cached; public routes are explicit."""
 import base64
 import json
 import time
@@ -13,7 +13,11 @@ from app import auth
 from app.config import Settings, settings
 from app.main import app
 
-PUBLIC = {"/api/linkedin/health", "/api/linkedin/auth/config"}
+PUBLIC = {
+    "/api/linkedin/health",
+    "/api/linkedin/auth/config",
+    "/api/linkedin/internal/daily-cleanup",
+}
 _REAL_LOAD_ACCESS = auth._load_access  # the supabase fixture swaps it out
 
 

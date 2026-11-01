@@ -202,6 +202,8 @@ nothing is written to a fixed system path.
 | `CLARIFY_MAX_TURNS` | `5` | hard cap on clarify questions -- a safety valve, not the real quality gate (see "Content quality pipeline" below) |
 | `TASK_QUEUE_URL` | `http://127.0.0.1:8000` | canonical queue product URL; production uses `https://ai-bharatiya-web.vercel.app/queue`, which maps to `/api/queue` automatically |
 | `IMAGE_STALL_TIMEOUT_MINUTES` | `40` | flags an unusually long queue wait or render runtime separately; render time starts only when a worker claims the task (independent of the task-queue lease/reclaim mechanism) |
+| `AUTO_ARCHIVE_DAYS` | `30` | archives idle posts and deletes their images after this many days; `0` disables automatic archiving |
+| `CRON_SECRET` | *(unset)* | bearer secret required by the daily cleanup endpoint; must be set in hosted environments |
 | `SUPABASE_SERVICE_KEY` | *(unset)* | server-only service-role key used to promote completed hero candidates from temporary queue artifacts into durable Storage; never sent to the browser |
 | `STORAGE_BUCKET` | `linkedin` | public Storage bucket for character heroes and candidates |
 
@@ -282,6 +284,8 @@ Environment (Production and Preview; never the browser):
 | `DB_SCHEMA` | `linkedin` |
 | `TASK_QUEUE_URL` | `https://ai-bharatiya-web.vercel.app/queue` |
 | `TASK_QUEUE_API_KEY` | this app's raw service key |
+| `AUTO_ARCHIVE_DAYS` | optional, default `30`; set `0` to disable automatic archiving |
+| `CRON_SECRET` | strong random bearer secret for the daily 03:00 IST cleanup job |
 | `AUTH_ENABLED` | `true` |
 | `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY` | the shared Supabase project |
 | `SUPABASE_SERVICE_KEY` | server-only service-role key for durable hero-candidate promotion |

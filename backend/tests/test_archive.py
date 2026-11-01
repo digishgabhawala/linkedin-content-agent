@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime, timedelta
 
 import pytest
@@ -11,6 +12,10 @@ ARTIFACT_ID = "11111111-1111-4111-8111-111111111111"
 
 def _artifact_url(base: str) -> str:
     return f"{base}/storage/v1/object/public/artifacts/{ARTIFACT_ID}.png"
+
+
+def _run(coro):
+    return asyncio.run(coro)
 
 
 def test_archive_clears_image_and_queues_deletion(db_session, monkeypatch):
@@ -118,3 +123,76 @@ def test_auto_archive_date_uses_updated_at_and_skips_archived():
     assert archive_service.auto_archive_date(post, days=30) == updated_at + timedelta(days=30)
     post.archived_at = datetime(2026, 10, 2)
     assert archive_service.auto_archive_date(post, days=30) is None
+
+
+def test_auto_archive_selects_idle_posts_of_all_owners(db_session):
+    now = datetime(2026, 11, 1, 3, 0)
+    posts = [
+        Post(owner_id="user-a", brief="a", status="ready",
+             updated_at=now - timedelta(days=31)),
+        Post(owner_id="user-b", brief="b", status="drafting",
+             updated_at=now - timedelta(days=32)),
+    ]
+    db_session.add_all(posts)
+    db_session.commit()
+
+    count = _run(archive_service.auto_archive(
+        db_session, object(), now=now, days=30))
+
+    assert count == 2
+    assert all(post.archived_at == now for post in posts)
+
+
+def test_auto_archive_skips_busy_and_recent(db_session):
+    now = datetime(2026, 11, 1, 3, 0)
+    eligible = Post(owner_id="user-a", brief="eligible", status="ready",
+                    updated_at=now - timedelta(days=31))
+    busy = Post(owner_id="user-a", brief="busy", status="drafting",
+                active_step='{"name":"draft","task_id":"t1"}',
+                updated_at=now - timedelta(days=32))
+    queued = Post(owner_id="user-b", brief="queued", status="image_queued",
+                  updated_at=now - timedelta(days=33))
+    recent = Post(owner_id="user-b", brief="recent", status="ready",
+                  updated_at=now - timedelta(days=29))
+    db_session.add_all([eligible, busy, queued, recent])
+    db_session.commit()
+
+    count = _run(archive_service.auto_archive(
+        db_session, object(), now=now, days=30))
+
+    assert count == 1
+    assert eligible.archived_at == now
+    assert busy.archived_at is None
+    assert queued.archived_at is None
+    assert recent.archived_at is None
+
+
+def test_auto_archive_disabled_when_zero(db_session):
+    now = datetime(2026, 11, 1, 3, 0)
+    post = Post(owner_id="user-a", brief="old", status="ready",
+                updated_at=now - timedelta(days=365))
+    db_session.add(post)
+    db_session.commit()
+
+    count = _run(archive_service.auto_archive(
+        db_session, object(), now=now, days=0))
+
+    assert count == 0
+    assert post.archived_at is None
+
+
+def test_auto_archive_respects_limit(db_session):
+    now = datetime(2026, 11, 1, 3, 0)
+    posts = [
+        Post(owner_id="user-a", brief=str(age), status="ready",
+             updated_at=now - timedelta(days=age))
+        for age in (33, 32, 31)
+    ]
+    db_session.add_all(posts)
+    db_session.commit()
+
+    count = _run(archive_service.auto_archive(
+        db_session, object(), now=now, days=30, limit=2))
+
+    assert count == 2
+    assert [post.archived_at is not None for post in posts] == [True, True, False]

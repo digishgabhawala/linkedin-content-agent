@@ -1,5 +1,7 @@
 """Hosting: no dependence on the working folder; no table setup on every start."""
 import asyncio
+import json
+from pathlib import Path
 
 from app import main
 from app.agents.content_sources import load_skill, load_user_profile
@@ -78,3 +80,12 @@ def test_missing_frontend_build_is_skipped(tmp_path):
     web = FastAPI()
     main.mount_frontend(web, tmp_path / "nope")
     assert [r.path for r in web.routes] == [r.path for r in FastAPI().routes]
+
+
+def test_vercel_runs_daily_cleanup_at_3am_ist():
+    config = json.loads((Path(__file__).parents[2] / "vercel.json").read_text())
+
+    assert config["crons"] == [{
+        "path": "/api/linkedin/internal/daily-cleanup",
+        "schedule": "30 21 * * *",
+    }]

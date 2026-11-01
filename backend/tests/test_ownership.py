@@ -75,6 +75,7 @@ def test_characters_and_hero_runs_are_private(api, users, monkeypatch):
 
 NOT_OWNED = {   # routes with no per-user record: checked elsewhere or user-independent
     ("GET", "/api/linkedin/health"), ("GET", "/api/linkedin/auth/config"),
+    ("GET", "/api/linkedin/internal/daily-cleanup"),
     ("GET", "/api/linkedin/auth/me"), ("GET", "/api/linkedin/resources/image-readiness"),
     ("GET", "/api/linkedin/resources/renderer-status"),
     ("GET", "/api/linkedin/profile"), ("PUT", "/api/linkedin/profile"),

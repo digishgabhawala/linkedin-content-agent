@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import hmac
 import json
 import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Literal
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -439,6 +440,24 @@ def health():
 @public_router.get("/auth/config")
 def auth_config():
     return public_auth_config()
+
+
+@public_router.get("/internal/daily-cleanup")
+async def daily_cleanup(
+        authorization: str | None = Header(None),
+        db: Session = Depends(get_db),
+        client: httpx.AsyncClient = Depends(get_http_client)):
+    if not settings.cron_secret:
+        raise HTTPException(503, "CRON_SECRET is not configured")
+    expected = f"Bearer {settings.cron_secret}"
+    if authorization is None or not hmac.compare_digest(authorization, expected):
+        raise HTTPException(401, "invalid cron authorization")
+
+    archived = await archive_service.auto_archive(
+        db, client, now=datetime.utcnow(), days=settings.auto_archive_days)
+    rows = image_cleanup.pending(db, location="queue_artifact", limit=100)
+    await image_cleanup.attempt(db, rows, queue_client=client)
+    return {"archived": archived, "deletions_retried": len(rows)}
 
 
 @router.get("/auth/me")
