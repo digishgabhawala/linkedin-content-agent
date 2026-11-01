@@ -240,6 +240,24 @@ SUPABASE_URL=https://<project-ref>.supabase.co SUPABASE_SERVICE_KEY=<service key
 Without a row, drafts lack the mascot's voice and placeholder; rendering
 falls back to the legacy worker-local Character Forge workspace.
 
+**One-off Storage sweep.** Run the sweep from `backend/` with the Task Queue
+project's Supabase service credentials in the environment. It is a dry run
+unless `--apply` is present, and reports file counts and sizes before deleting
+anything:
+
+```bash
+cd backend
+SUPABASE_URL=https://<project-ref>.supabase.co SUPABASE_SERVICE_KEY=<service key> \
+  .venv/bin/python scripts/sweep_storage.py
+# Review the output, then repeat with --apply.
+```
+
+The `artifacts` bucket is deliberately skipped unless
+`--artifacts-before YYYY-MM-DD` is supplied. Demo-reel shares that bucket: use
+the date of the first sweep before demo-reel starts, and on any later run use
+a cutoff no later than the date demo-reel began storing artifacts. The script
+prints this warning whenever the flag is used.
+
 **Onboarding: Profile -> Mascot -> first post.** A new user first writes
 their writer profile, then creates a mascot (a character with a locked hero)
 in Character Studio; only then can they create posts. `POST /posts` refuses
@@ -426,9 +444,12 @@ version:
   Editing/versioning cards, retrying one failed candidate, and archive/delete
   management remain deliberately deferred; see
   `docs/hero-backdrop-backlog.md`.
-- **Image archival / cleanup.** Superseded renders (Retry, new image) stay
-  in Storage unreferenced; add archival of old posts and removal of
-  orphaned images.
+- [x] **Image archival / cleanup.** Archive idle posts, delete superseded
+  renders and unpicked hero candidates, and provide a dry-run-first sweep for
+  existing orphaned files.
+- **Deletion outbox retention.** Completed `image_deletions` rows are kept for
+  audit; add a retention policy and prune old completed rows when the history
+  becomes large enough to matter.
 - **Calibrate pillar weights against real data** once there's a body of
   real drafts to tune against (see Known issues above).
 
