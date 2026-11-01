@@ -384,6 +384,9 @@ version:
 
 ## Implementation TODO
 
+> **MVP closed on 2026-11-01.** Open items below are deliberate deferrals, each with the trigger that would bring it back: see [STATUS.md](https://github.com/digishgabhawala/ai-bharatiya-web/blob/main/docs/STATUS.md).
+
+
 - [x] Show the five-stage content journey, distinguish a queued image from
   an actively claimed/rendering task, and serialize UTC timestamps with an
   explicit timezone so browser elapsed times are correct.
@@ -434,10 +437,8 @@ version:
   hasn't been built.
 - [x] **Writer profile templates.** New users choose from five neutral starting
   profiles, while updating an existing profile from a template is deferred.
-- **Smaller stored images.** Renders are ~0.9 MB 1024x1024 PNGs; saving
-  them as WebP (done in the worker before upload) would cut that ~5x.
-  Not urgent: Supabase free tier's 1 GB holds ~1,000 images and we expect
-  50-100 live at a time.
+- [x] **Smaller stored images.** Post renders are stored as WebP (~8.7x
+  smaller than the original PNGs); hero images stay PNG.
 - **Character Studio evolution.** Character-card creation, queued candidate
   generation, durable promotion, visual review and hero locking are complete.
   Editing/versioning cards, retrying one failed candidate, and archive/delete
