@@ -2,7 +2,7 @@
 
 Hero candidates are copied into Storage with the signed-in user's own
 session, so the hosted app never holds the service key. These policies let
-an authenticated user write -- and nothing else -- under their own folder,
+an authenticated user write and delete under their own folder,
 ``<bucket>/characters/<auth.uid()>/``. Older ``characters/<id>/`` objects
 stay publicly readable (the bucket is public) but nobody can write there.
 
@@ -33,7 +33,8 @@ def policy_statements(bucket: str) -> list[str]:
     # Upsert (x-upsert) needs select + insert + update on the object row.
     for action, clause in (("select", f"using ({scope})"),
                            ("insert", f"with check ({scope})"),
-                           ("update", f"using ({scope}) with check ({scope})")):
+                           ("update", f"using ({scope}) with check ({scope})"),
+                           ("delete", f"using ({scope})")):
         policy = f"{bucket}_{_PREFIX}_authenticated_{action}"
         statements.append(f'drop policy if exists "{policy}" on storage.objects')
         statements.append(

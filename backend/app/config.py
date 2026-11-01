@@ -98,6 +98,9 @@ class Settings(BaseSettings):
     step_max_wait_minutes: float = 60
     image_max_wait_minutes: float = 120
     image_stall_timeout_minutes: int = 40
+    auto_archive_days: int = 30
+    cron_secret: str = ""
+    auto_archive_notice_days: int = 7
 
     # Login (same approach as task-queue's admin page): a Supabase session
     # whose platform profile is approved with a linkedin membership. Off by default so local development

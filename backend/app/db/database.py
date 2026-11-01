@@ -58,6 +58,7 @@ _NEW_POST_COLUMNS = {
     "active_step": "TEXT",
     "step_context": "TEXT",
     "step_error": "TEXT",
+    "archived_at": "TIMESTAMP",
 }
 
 _NEW_CHARACTER_COLUMNS = {

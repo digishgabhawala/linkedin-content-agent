@@ -12,6 +12,7 @@ from app.db.models import (
     Feedback,
     HeroCandidate,
     HeroGenerationRun,
+    ImageDeletion,
     Post,
     PostDraft,
     SceneAsset,
@@ -39,7 +40,10 @@ def _seed(url):
                                      detail_text="a desk"),
                    PostDraft(id="d1", post_id="p1", version=1, post_text="hello",
                              generated_by="draft"),
-                   Feedback(id="f1", post_id="p1", stage="draft", user_note="nice")])
+                   Feedback(id="f1", post_id="p1", stage="draft", user_note="nice"),
+                   ImageDeletion(id="i1", owner_id=LOCAL_USER_ID,
+                                 location="queue_artifact", ref="artifact-1",
+                                 reason="replaced", post_id="p1")])
         # init_db seeded the template profile; the user then wrote their own.
         s.merge(WriterProfile(owner_id=LOCAL_USER_ID, profile_md="# Me\nI build things."))
         s.commit()
@@ -53,7 +57,8 @@ def test_copies_every_table_preserving_ids_and_values(tmp_path):
 
     assert counts == {"characters": 1, "hero_generation_runs": 1, "hero_candidates": 1,
                       "scene_assets": 1, "scene_asset_versions": 1, "posts": 1,
-                      "post_drafts": 1, "feedback": 1, "writer_profiles": 1}
+                      "post_drafts": 1, "feedback": 1, "image_deletions": 1,
+                      "writer_profiles": 1}
     with Session(build_engine(target, "linkedin")) as s:
         post = s.get(Post, "p1")
         assert post.image_profile == "lightning"
@@ -64,6 +69,7 @@ def test_copies_every_table_preserving_ids_and_values(tmp_path):
         assert post.backdrop_version.detail_text == "a desk"
         assert post.character.personality == "dry humor"
         assert s.get(HeroGenerationRun, "r1").candidates[0].image_url == "https://x/hero.png"
+        assert s.get(ImageDeletion, "i1").ref == "artifact-1"
         assert s.get(WriterProfile, LOCAL_USER_ID).profile_md == "# Me\nI build things."
 
 

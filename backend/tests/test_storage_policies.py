@@ -8,10 +8,16 @@ from app.db.storage_policies import apply_storage_policies, policy_statements
 def test_policies_are_scoped_to_the_bucket_characters_folder():
     statements = policy_statements("linkedin")
     creates = [s for s in statements if s.startswith("create policy")]
-    assert len(creates) == 3  # select + insert + update, as upsert needs
+    assert len(creates) == 4  # select + insert + update for upsert, plus delete
     assert all("to authenticated" in s for s in creates)
     assert all("bucket_id = 'linkedin'" in s and "= 'characters'" in s for s in creates)
-    assert not any(" for delete " in s for s in statements)
+
+
+def test_policy_statements_include_owner_scoped_delete():
+    statements = policy_statements("linkedin")
+    delete = next(s for s in statements if " for delete " in s)
+    assert "for delete to authenticated using (" in delete
+    assert "(storage.foldername(name))[2] = (select auth.uid()::text)" in delete
 
 
 @pytest.mark.parametrize("bucket", ["", "Bad", "x'; drop table posts; --", "a" * 64])

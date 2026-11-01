@@ -83,6 +83,7 @@ class Post(Base):
 
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    archived_at = Column(DateTime, nullable=True)
     image_started_at = Column(DateTime, nullable=True)  # stall-detection anchor
 
     # The mascot (personality, placeholder image). No foreign key: a post
@@ -127,6 +128,26 @@ class Character(Base):
     updated_at = Column(DateTime, nullable=False, default=datetime.utcnow)
 
 
+class ImageDeletion(Base):
+    __tablename__ = "image_deletions"
+    __table_args__ = (
+        Index("ix_image_deletions_location_deleted", "location", "deleted_at"),
+    )
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    owner_id = Column(String, nullable=False)
+    location = Column(String, nullable=False)  # queue_artifact|linkedin_storage
+    ref = Column(String, nullable=False)
+    reason = Column(String, nullable=False)  # replaced|archived|candidate_unpicked|candidate_transport
+    post_id = Column(String, nullable=True)
+    character_id = Column(String, nullable=True)
+    not_before = Column(DateTime, nullable=True)
+    attempts = Column(Integer, nullable=False, default=0)
+    last_error = Column(Text, nullable=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    deleted_at = Column(DateTime, nullable=True)
+
+
 class HeroGenerationRun(Base):
     """One request for several independently queued hero candidates."""
     __tablename__ = "hero_generation_runs"
@@ -160,7 +181,7 @@ class HeroCandidate(Base):
     run_id = Column(String, ForeignKey("hero_generation_runs.id"), nullable=False)
     task_id = Column(String, nullable=True, unique=True)
     seed = Column(Integer, nullable=False)
-    # submitting|queued|claimed|promotion_failed|ready|failed
+    # submitting|queued|claimed|promotion_failed|ready|failed|discarded
     status = Column(String, nullable=False, default="submitting")
     queue_artifact_id = Column(String, nullable=True)
     asset_id = Column(String, nullable=True)  # sha256:<hex> of durable bytes

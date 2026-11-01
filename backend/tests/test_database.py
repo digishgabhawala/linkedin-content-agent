@@ -70,6 +70,18 @@ def test_init_db_adds_columns_missing_from_an_old_table(tmp_path):
                 inspect(engine).get_table_names())
 
 
+def test_init_db_adds_posts_archived_at(tmp_path):
+    engine = create_engine(f"sqlite:///{tmp_path / 'old-posts.db'}")
+    with engine.begin() as conn:
+        conn.execute(text("CREATE TABLE posts (id VARCHAR PRIMARY KEY, character_id VARCHAR, "
+                          "brief TEXT, status VARCHAR, draft_version INTEGER)"))
+
+    init_db(engine, "linkedin")
+
+    columns = {c["name"] for c in inspect(engine).get_columns("posts")}
+    assert "archived_at" in columns
+
+
 def test_init_db_backfills_scene_asset_v1_and_pins_legacy_posts(tmp_path):
     engine = create_engine(f"sqlite:///{tmp_path / 'legacy-scenes.db'}")
     with engine.begin() as conn:
