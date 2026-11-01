@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import secrets
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Literal
 
 import httpx
@@ -30,6 +30,7 @@ from ..services import hero_generation as hgs
 from ..services import image_service as isvc
 from ..services import post_service as ps
 from ..services import profile_service, steps
+from ..services import archive_service, image_cleanup
 from ..services.character_choice import (
     CharacterNotOwned,
     MascotRequired,
@@ -225,6 +226,13 @@ def _serialize_post(post: Post) -> dict:
     backdrop_version = post.backdrop_version
     backdrop = post.scene_asset
     active_backdrop = backdrop if backdrop and backdrop.archived_at is None else None
+    auto_archive_on = archive_service.auto_archive_date(
+        post, days=settings.auto_archive_days)
+    if auto_archive_on is not None:
+        now = (datetime.now(auto_archive_on.tzinfo)
+               if auto_archive_on.tzinfo else datetime.utcnow())
+        if auto_archive_on > now + timedelta(days=settings.auto_archive_notice_days):
+            auto_archive_on = None
     return {
         "id": post.id,
         "character_id": post.character_id,
@@ -270,6 +278,8 @@ def _serialize_post(post: Post) -> dict:
         "is_queue_delayed": isvc.is_queue_delayed(post),
         "is_stalled": isvc.is_stalled(post),
         "image_started_at": _utc_iso(post.image_started_at),
+        "archived_at": _utc_iso(post.archived_at),
+        "auto_archive_on": _utc_iso(auto_archive_on),
         "created_at": _utc_iso(post.created_at),
         "updated_at": _utc_iso(post.updated_at),
     }
@@ -298,7 +308,7 @@ def _serialize_feedback(fb) -> dict:
 
 def _idle_post_or_409(db: Session, post_id: str, user: AuthUser) -> Post:
     """Plain (non-compute) actions must not change a post mid-step."""
-    post = _post_or_404(db, post_id, user)
+    post = _editable_post_or_409(db, post_id, user)
     if post.active_step:
         raise HTTPException(status_code=409, detail=f"post {post_id} is busy with a step -- "
                             "wait for it to finish")
@@ -310,6 +320,14 @@ def _post_or_404(db: Session, post_id: str, user: AuthUser) -> Post:
     post = db.get(Post, post_id)
     if post is None or post.owner_id != user.id:
         raise HTTPException(status_code=404, detail=f"post {post_id} not found")
+    return post
+
+
+def _editable_post_or_409(db: Session, post_id: str, user: AuthUser) -> Post:
+    post = _post_or_404(db, post_id, user)
+    if post.archived_at is not None:
+        raise ReasonedHTTPException(
+            409, f"post {post_id} is archived and read-only", "archived")
     return post
 
 
@@ -596,11 +614,11 @@ async def create_post(req: CreatePostRequest, db: Session = Depends(get_db),
 
 
 @router.get("/posts")
-async def list_posts(db: Session = Depends(get_db),
+async def list_posts(archived: bool = False, db: Session = Depends(get_db),
                      client: httpx.AsyncClient = Depends(get_http_client),
         user: AuthUser = Depends(current_user)):
     posts = []
-    for p in ps.list_posts(db, owner_id=user.id):
+    for p in ps.list_posts(db, owner_id=user.id, archived=archived):
         try:
             p = await steps.advance(db, client, p)
         except Exception:  # noqa: BLE001 -- one bad post must not hide the list
@@ -617,11 +635,34 @@ async def get_post(post_id: str, db: Session = Depends(get_db),
     return _serialize_post(post)
 
 
+@router.post("/posts/{post_id}/archive")
+async def archive_post(post_id: str, db: Session = Depends(get_db),
+                       client: httpx.AsyncClient = Depends(get_http_client),
+        user: AuthUser = Depends(current_user)):
+    post = _post_or_404(db, post_id, user)
+    try:
+        rows = archive_service.archive_post(db, post)
+    except archive_service.PostBusy as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    try:
+        await image_cleanup.attempt(db, rows, queue_client=client)
+    except Exception:  # noqa: BLE001 -- cleanup never invalidates the archive
+        db.rollback()
+    return _serialize_post(post)
+
+
+@router.post("/posts/{post_id}/unarchive")
+def unarchive_post(post_id: str, db: Session = Depends(get_db),
+        user: AuthUser = Depends(current_user)):
+    post = _post_or_404(db, post_id, user)
+    return _serialize_post(archive_service.unarchive_post(db, post))
+
+
 @router.post("/posts/{post_id}/clarify")
 async def clarify(post_id: str, req: ClarifyRequest, db: Session = Depends(get_db),
                   client: httpx.AsyncClient = Depends(get_llm_client),
         user: AuthUser = Depends(current_user)):
-    _post_or_404(db, post_id, user)
+    _editable_post_or_409(db, post_id, user)
     return _serialize_post(await _step_action(
         steps.start_clarify_answer(db, client, post_id, req.answer)))
 
@@ -632,7 +673,7 @@ async def additional_info(post_id: str, req: AdditionalInfoRequest, db: Session 
         user: AuthUser = Depends(current_user)):
     """Human's response to a needs_input escalation -- unbounded, unlike the
     automatic recalibration loop."""
-    _post_or_404(db, post_id, user)
+    _editable_post_or_409(db, post_id, user)
     return _serialize_post(await _step_action(
         steps.start_additional_info(db, client, post_id, req.info)))
 
@@ -654,7 +695,7 @@ def accept_draft(post_id: str, db: Session = Depends(get_db),
 async def redraft(post_id: str, db: Session = Depends(get_db),
                   client: httpx.AsyncClient = Depends(get_llm_client),
         user: AuthUser = Depends(current_user)):
-    _post_or_404(db, post_id, user)
+    _editable_post_or_409(db, post_id, user)
     return _serialize_post(await _step_action(steps.start_redraft(db, client, post_id)))
 
 
@@ -662,7 +703,7 @@ async def redraft(post_id: str, db: Session = Depends(get_db),
 async def regenerate(post_id: str, req: RegenerateRequest, db: Session = Depends(get_db),
                      client: httpx.AsyncClient = Depends(get_llm_client),
         user: AuthUser = Depends(current_user)):
-    _post_or_404(db, post_id, user)
+    _editable_post_or_409(db, post_id, user)
     return _serialize_post(await _step_action(
         steps.start_regenerate(db, client, post_id, req.instruction)))
 
@@ -677,7 +718,7 @@ def get_drafts(post_id: str, db: Session = Depends(get_db),
 @router.post("/posts/{post_id}/feedback")
 def add_feedback(post_id: str, req: FeedbackRequest, db: Session = Depends(get_db),
         user: AuthUser = Depends(current_user)):
-    _post_or_404(db, post_id, user)
+    _editable_post_or_409(db, post_id, user)
     fb = fs.create_feedback(db, post_id, req.stage, req.user_note, req.post_text_snippet)
     return _serialize_feedback(fb)
 
@@ -693,7 +734,7 @@ def get_feedback(post_id: str, db: Session = Depends(get_db),
 async def lock(post_id: str, db: Session = Depends(get_db),
                client: httpx.AsyncClient = Depends(get_llm_client),
         user: AuthUser = Depends(current_user)):
-    _post_or_404(db, post_id, user)
+    _editable_post_or_409(db, post_id, user)
     return _serialize_post(await _step_action(steps.start_lock(db, client, post_id)))
 
 
@@ -759,7 +800,7 @@ async def generate_image(post_id: str, req: GenerateImageRequest | None = None,
                          db: Session = Depends(get_db),
                          client: httpx.AsyncClient = Depends(get_http_client),
         user: AuthUser = Depends(current_user)):
-    _post_or_404(db, post_id, user)
+    _editable_post_or_409(db, post_id, user)
     return _serialize_post(await _step_action(
         steps.start_image(db, client, post_id, profile=req.profile if req else "full")))
 
@@ -769,7 +810,7 @@ async def retry_step(post_id: str, db: Session = Depends(get_db),
                      client: httpx.AsyncClient = Depends(get_llm_client),
         user: AuthUser = Depends(current_user)):
     """Resubmit the step that failed -- the user's call, never automatic."""
-    _post_or_404(db, post_id, user)
+    _editable_post_or_409(db, post_id, user)
     return _serialize_post(await _step_action(steps.retry_step(db, client, post_id)))
 
 

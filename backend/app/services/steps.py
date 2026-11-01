@@ -381,6 +381,8 @@ def _attach_task_view(post: Post, step: str, task: dict) -> None:
 async def advance(db: Session, client, post: Post) -> Post:
     """Called on every status check: move the post forward if its active
     step's task has finished. Safe to call concurrently (compare-and-set)."""
+    if post.archived_at is not None:
+        return post
     active = active_step(post)
     if active is None and post.status == "image_queued" and post.image_task_id:
         # Image submitted by the pre-step-engine code: adopt it as the active step.
