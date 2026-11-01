@@ -11,7 +11,7 @@ from app.agents.taxonomy import GATE_PILLARS, OPTIMIZATION_PILLARS
 from app.auth import LOCAL_USER_ID
 from app.config import settings
 from app.db.database import Base
-from app.db.models import Character, Post, PostDraft
+from app.db.models import Character, ImageDeletion, Post, PostDraft
 from app.services import steps
 from app.services.steps import Next, Wait, decide_next
 
@@ -91,8 +91,11 @@ def test_escalation_scene_and_image_end_in_their_stages():
 class FakeQueue:
     """Records submitted tasks; tests set each task's queue status/result."""
 
-    def __init__(self):
+    def __init__(self, artifact_url="https://storage/img.png"):
         self.tasks = {}
+        self.artifact_url = artifact_url
+        self.deleted = []
+        self.delete_error = None
 
     def submitted(self, task_type=None):
         return [t for t in self.tasks.values() if task_type in (None, t["task_type"])]
@@ -122,7 +125,7 @@ class FakeQueue:
 
     async def get(self, url, timeout):
         if "/artifacts/" in url:
-            data = {"url": "https://storage/img.png"}
+            data = {"url": self.artifact_url}
         else:
             data = dict(self.tasks[url.rsplit("/", 1)[1]])
 
@@ -132,6 +135,18 @@ class FakeQueue:
 
             def json(self_inner):
                 return data
+        return R()
+
+    async def delete(self, url, timeout):
+        self.deleted.append(url)
+        if self.delete_error:
+            raise self.delete_error
+
+        class R:
+            status_code = 204
+
+            def raise_for_status(self):
+                pass
         return R()
 
 
@@ -244,6 +259,86 @@ def test_lock_and_image_steps(db):
     q.finish(result={"image_artifact_id": "a1"})
     post = _run(steps.advance(db, q, post))
     assert post.status == "image_ready" and post.final_image_path == "https://storage/img.png"
+
+
+OLD_ARTIFACT_ID = "11111111-1111-4111-8111-111111111111"
+NEW_ARTIFACT_ID = "22222222-2222-4222-8222-222222222222"
+
+
+def _artifact_url(base, artifact_id):
+    return f"{base}/storage/v1/object/public/artifacts/{artifact_id}.png"
+
+
+def _complete_render(db, q, old_url=None):
+    post = Post(
+        owner_id=LOCAL_USER_ID, character_id="gtee_dev", brief="b",
+        status="image_ready" if old_url else "locked", post_text="p",
+        scene_instruction="waving", seed=3, clarify_transcript="[]",
+        final_image_path=old_url,
+    )
+    db.add(post)
+    db.commit()
+    post = _run(steps.start_image(db, q, post.id, "full"))
+    q.finish(result={"image_artifact_id": NEW_ARTIFACT_ID})
+    return _run(steps.advance(db, q, post))
+
+
+def test_new_render_queues_and_deletes_previous_artifact(db, monkeypatch):
+    supabase_url = "https://project.supabase.co"
+    monkeypatch.setattr(settings, "supabase_url", supabase_url)
+    old_url = _artifact_url(supabase_url, OLD_ARTIFACT_ID)
+    new_url = _artifact_url(supabase_url, NEW_ARTIFACT_ID)
+    q = FakeQueue(artifact_url=new_url)
+
+    post = _complete_render(db, q, old_url)
+
+    deletion = db.query(ImageDeletion).one()
+    assert post.final_image_path == new_url
+    assert deletion.ref == OLD_ARTIFACT_ID and deletion.reason == "replaced"
+    assert deletion.deleted_at is not None
+    assert q.deleted == [f"{settings.task_queue_api_url}/artifacts/{OLD_ARTIFACT_ID}"]
+
+
+def test_new_render_kept_when_old_delete_fails(db, monkeypatch):
+    supabase_url = "https://project.supabase.co"
+    monkeypatch.setattr(settings, "supabase_url", supabase_url)
+    old_url = _artifact_url(supabase_url, OLD_ARTIFACT_ID)
+    new_url = _artifact_url(supabase_url, NEW_ARTIFACT_ID)
+    q = FakeQueue(artifact_url=new_url)
+    q.delete_error = httpx.ConnectError("queue unavailable")
+
+    post = _complete_render(db, q, old_url)
+
+    deletion = db.query(ImageDeletion).one()
+    assert post.final_image_path == new_url
+    assert deletion.deleted_at is None and "queue unavailable" in deletion.last_error
+    assert post.step_error is None
+
+
+def test_same_render_url_twice_queues_nothing(db, monkeypatch):
+    supabase_url = "https://project.supabase.co"
+    monkeypatch.setattr(settings, "supabase_url", supabase_url)
+    new_url = _artifact_url(supabase_url, NEW_ARTIFACT_ID)
+    q = FakeQueue(artifact_url=new_url)
+
+    post = _complete_render(db, q, new_url)
+
+    assert post.final_image_path == new_url
+    assert db.query(ImageDeletion).count() == 0
+    assert q.deleted == []
+
+
+def test_first_render_queues_nothing(db, monkeypatch):
+    supabase_url = "https://project.supabase.co"
+    monkeypatch.setattr(settings, "supabase_url", supabase_url)
+    new_url = _artifact_url(supabase_url, NEW_ARTIFACT_ID)
+    q = FakeQueue(artifact_url=new_url)
+
+    post = _complete_render(db, q)
+
+    assert post.final_image_path == new_url
+    assert db.query(ImageDeletion).count() == 0
+    assert q.deleted == []
 
 
 def test_image_task_carries_remote_locked_hero_snapshot(db):

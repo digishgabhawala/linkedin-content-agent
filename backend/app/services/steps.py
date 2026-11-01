@@ -50,7 +50,7 @@ from ..agents.taxonomy import (
 )
 from ..config import settings
 from ..db.models import Post, PostDraft
-from . import llm_client
+from . import image_cleanup, llm_client
 from .post_service import (
     _MIN_MATERIAL_CHARS,
     PostServiceError,
@@ -281,9 +281,15 @@ async def apply(db: Session, client, post: Post, step: str, result: dict, ctx: d
         resp = await client.get(f"{settings.task_queue_api_url}/artifacts/{artifact_id}",
                                 timeout=15)
         resp.raise_for_status()
-        post.final_image_path = resp.json()["url"]
+        new_url = resp.json()["url"]
+        deletions = []
+        if post.final_image_path != new_url:
+            deletion = image_cleanup.queue_post_image(db, post, "replaced")
+            if deletion is not None:
+                deletions.append(deletion)
+        post.final_image_path = new_url
         post.image_job_error = None
-        return {}
+        return {"image_deletions": deletions}
     raise ValueError(f"unknown step {step!r}")
 
 
@@ -434,6 +440,12 @@ async def advance(db: Session, client, post: Post) -> Post:
         db.refresh(post)
         _record_failure(db, post, step, ctx, f"could not apply {step} result: {e}")
         return post
+    if step == "image":
+        try:
+            await image_cleanup.attempt(
+                db, outcome.get("image_deletions", []), queue_client=client)
+        except Exception:  # noqa: BLE001 -- cleanup never invalidates the new render
+            db.rollback()
     decision = decide_next(step, outcome, ctx)
     if isinstance(decision, Next):
         try:
