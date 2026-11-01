@@ -32,6 +32,8 @@ def archive_post(
 
 
 def unarchive_post(db: Session, post: Post) -> Post:
+    if post.archived_at is None:
+        return post
     post.archived_at = None
     if post.status in ("image_ready", "image_failed", "ready"):
         post.status = "locked"

@@ -97,6 +97,18 @@ def test_unarchive_ready_post_becomes_locked(db_session):
     assert post.final_image_path is None
 
 
+def test_unarchive_active_post_is_a_no_op(db_session):
+    post = Post(owner_id="user-a", brief="b", status="ready",
+                final_image_path="https://storage/current.webp")
+    db_session.add(post)
+    db_session.commit()
+
+    archive_service.unarchive_post(db_session, post)
+
+    assert post.status == "ready"
+    assert post.final_image_path == "https://storage/current.webp"
+
+
 @pytest.mark.parametrize("status", ["clarifying", "needs_input", "drafting", "locked"])
 def test_unarchive_text_stage_keeps_status(db_session, status):
     post = Post(owner_id="user-a", brief="b", status=status,
