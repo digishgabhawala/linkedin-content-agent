@@ -34,9 +34,14 @@ export const api = {
   createPost: (brief: string, character_id?: string) =>
     req<Post>('/posts', { method: 'POST', body: JSON.stringify({ brief, character_id }) }),
 
-  listPosts: () => req<Post[]>('/posts'),
+  listPosts: ({ archived = false }: { archived?: boolean } = {}) =>
+    req<Post[]>(`/posts?archived=${archived}`),
 
   getPost: (id: string) => req<Post>(`/posts/${id}`),
+
+  archivePost: (id: string) => req<Post>(`/posts/${id}/archive`, { method: 'POST' }),
+
+  unarchivePost: (id: string) => req<Post>(`/posts/${id}/unarchive`, { method: 'POST' }),
 
   clarify: (id: string, answer: string) =>
     req<Post>(`/posts/${id}/clarify`, { method: 'POST', body: JSON.stringify({ answer }) }),

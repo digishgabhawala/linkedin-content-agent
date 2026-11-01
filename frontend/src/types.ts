@@ -54,6 +54,8 @@ export interface Post {
   image_failure_kind: 'corrupt_output' | 'insufficient_memory' | 'expired' | null
   image_profile: 'full' | 'lightning' | null
   image_started_at: string | null
+  archived_at: string | null
+  auto_archive_on: string | null
   created_at: string | null
   updated_at: string | null
 }

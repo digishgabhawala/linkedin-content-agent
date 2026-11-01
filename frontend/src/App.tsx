@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
 import { api } from './api'
 import { usePostPolling } from './hooks/usePostPolling'
 import type { Character, ImageReadiness, Post, RendererStatus } from './types'
@@ -35,6 +35,18 @@ const BackdropsPage = lazy(() =>
 
 type AppView = 'posts' | 'characters' | 'backdrops' | 'profile'
 
+const ARCHIVE_WARNING = "Archiving deletes this post's image permanently. The text, drafts and scores are kept. You can unarchive later and generate a new image."
+
+function autoArchiveNotice(value: string) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return null
+  return `Archives automatically on ${date.toLocaleDateString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  })} unless edited`
+}
+
 function viewFromHash(): AppView {
   if (window.location.hash.startsWith('#characters')) return 'characters'
   if (window.location.hash.startsWith('#backdrops')) return 'backdrops'
@@ -53,6 +65,7 @@ export default function App() {
   const [characterStudioDirty, setCharacterStudioDirty] = useState(false)
   const { post, setPost } = usePostPolling(null)
   const [history, setHistory] = useState<Post[]>([])
+  const [historyArchived, setHistoryArchived] = useState(false)
   const [busy, setBusy] = useState(false)
   const [imageError, setImageError] = useState<string | null>(null)
   const [imageReadiness, setImageReadiness] = useState<ImageReadiness | null>(null)
@@ -66,6 +79,14 @@ export default function App() {
   // loading; 'unknown' if the list failed (the server still enforces it).
   const [mascots, setMascots] = useState<Character[] | 'unknown' | null>(null)
   const onNewPostScreen = activeView === 'posts' && !post
+
+  const refreshHistory = useCallback(async () => {
+    try {
+      setHistory(await api.listPosts({ archived: historyArchived }))
+    } catch {
+      /* ignore */
+    }
+  }, [historyArchived])
 
   // Refreshed whenever the new-post screen shows, e.g. after locking a hero
   // in Character Studio.
@@ -99,7 +120,7 @@ export default function App() {
 
   useEffect(() => {
     refreshHistory()
-  }, [])
+  }, [refreshHistory])
 
   // First use: no writer profile yet -> open the Profile tab with the template.
   function openOnboarding() {
@@ -120,7 +141,10 @@ export default function App() {
       setActiveView(viewFromHash())
       const requestedPostId = postIdFromHash()
       if (requestedPostId) {
-        void api.getPost(requestedPostId).then(setPost).catch(() => {})
+        void api.getPost(requestedPostId).then(requestedPost => {
+          setPost(requestedPost)
+          setHistoryArchived(Boolean(requestedPost.archived_at))
+        }).catch(() => {})
       }
     }
     syncView()
@@ -160,15 +184,7 @@ export default function App() {
   // keep the sidebar's status labels in sync once the active post changes
   useEffect(() => {
     if (post?.status) refreshHistory()
-  }, [post?.status])
-
-  async function refreshHistory() {
-    try {
-      setHistory(await api.listPosts())
-    } catch {
-      /* ignore */
-    }
-  }
+  }, [post?.status, refreshHistory])
 
   async function run<T>(
     fn: () => Promise<T>,
@@ -387,6 +403,24 @@ export default function App() {
     if (p) setPost(p)
   }
 
+  async function handleArchive() {
+    if (!post || post.archived_at || !window.confirm(ARCHIVE_WARNING)) return
+    const archived = await run(() => api.archivePost(post.id), undefined, 'Archiving this post…')
+    if (archived) {
+      setPost(archived)
+      setHistoryArchived(true)
+    }
+  }
+
+  async function handleUnarchive() {
+    if (!post || !post.archived_at) return
+    const active = await run(() => api.unarchivePost(post.id), undefined, 'Restoring this post…')
+    if (active) {
+      setPost(active)
+      setHistoryArchived(false)
+    }
+  }
+
   async function handleFeedback(stage: string, note: string) {
     if (!post) return
     await run(() => api.addFeedback(post.id, stage, note))
@@ -398,9 +432,15 @@ export default function App() {
     setPost(p)
   }
 
+  function showHistory(archived: boolean) {
+    setHistoryArchived(archived)
+    if (post && Boolean(post.archived_at) !== archived) setPost(null)
+  }
+
   function startNew() {
     setImageError(null)
     setShowMemoryDialog(false)
+    setHistoryArchived(false)
     setPost(null)
   }
 
@@ -538,19 +578,60 @@ export default function App() {
           )}
         </header>
 
-        <div className={`posts-layout ${history.length === 0 ? 'posts-layout--single' : ''}`}>
-          {history.length > 0 && (
-            <HistorySidebar
-              history={history}
-              activeId={post?.id ?? null}
-              onSelect={selectFromHistory}
-            />
-          )}
+        <div className="posts-layout">
+          <HistorySidebar
+            history={history}
+            activeId={post?.id ?? null}
+            archived={historyArchived}
+            onArchivedChange={showHistory}
+            onSelect={selectFromHistory}
+          />
 
           <div className="posts-workspace">
-          {post && <JourneyProgress post={post} activity={journeyActivity} />}
+          {post && !post.archived_at && <JourneyProgress post={post} activity={journeyActivity} />}
 
-          {post && <StepStatus post={post} onRetry={handleRetryStep} loading={working} />}
+          {post && !post.archived_at && (
+            <StepStatus post={post} onRetry={handleRetryStep} loading={working} />
+          )}
+
+          {post && (post.archived_at ? (
+            <section className="post-panel post-panel--warning" aria-labelledby="archived-post-heading">
+              <div className="post-panel__heading">
+                <p className="post-panel__eyebrow post-panel__eyebrow--warning">Read-only</p>
+                <h3 id="archived-post-heading">This post is archived</h3>
+                <p>Archived posts are read-only.</p>
+                <p>Unarchive it to edit the draft or generate a new image.</p>
+              </div>
+              <div className="post-actions">
+                <button
+                  type="button"
+                  onClick={handleUnarchive}
+                  disabled={working}
+                  className="post-button post-button--primary"
+                >
+                  Unarchive post
+                </button>
+              </div>
+            </section>
+          ) : (
+            <section className="post-panel post-panel--compact post-lifecycle" aria-label="Post actions">
+              {post.auto_archive_on && (
+                <p className="post-message post-message--warning">
+                  {autoArchiveNotice(post.auto_archive_on)}
+                </p>
+              )}
+              <div className="post-actions">
+                <button
+                  type="button"
+                  onClick={handleArchive}
+                  disabled={working}
+                  className="post-button post-button--secondary"
+                >
+                  Archive post
+                </button>
+              </div>
+            </section>
+          ))}
 
           {!post && (
             <section className="post-panel post-panel--brief" aria-labelledby="new-post-heading">
@@ -565,11 +646,11 @@ export default function App() {
             </section>
           )}
 
-          {post && post.status === 'clarifying' && (
+          {post && !post.archived_at && post.status === 'clarifying' && (
             <ClarifyChat post={post} onAnswer={handleAnswer} loading={working} />
           )}
 
-          {post && post.status === 'needs_input' && (
+          {post && !post.archived_at && post.status === 'needs_input' && (
             <NeedsInput
               post={post}
               onSubmitInfo={handleSubmitAdditionalInfo}
@@ -578,7 +659,7 @@ export default function App() {
             />
           )}
 
-          {post && post.status === 'drafting' && (
+          {post && !post.archived_at && post.status === 'drafting' && (
             <>
               <DraftPanel
                 post={post}
@@ -591,7 +672,7 @@ export default function App() {
             </>
           )}
 
-          {post && post.status === 'locked' && (
+          {post && !post.archived_at && post.status === 'locked' && (
             <>
               <LockAndScene
                 post={post}
@@ -609,7 +690,7 @@ export default function App() {
             </>
           )}
 
-          {post && (post.status === 'image_queued' || post.status === 'image_failed') && (
+          {post && !post.archived_at && (post.status === 'image_queued' || post.status === 'image_failed') && (
             <ImageStatus
               post={post}
               // Retry repeats the profile the user last chose (a failed
@@ -619,7 +700,7 @@ export default function App() {
             />
           )}
 
-          {post && (post.status === 'image_ready' || post.status === 'ready') && (
+          {post && !post.archived_at && (post.status === 'image_ready' || post.status === 'ready') && (
             <>
               <PostPreview
                 post={post}
@@ -632,6 +713,16 @@ export default function App() {
               />
               <FeedbackForm onSubmit={handleFeedback} />
             </>
+          )}
+
+          {post && post.archived_at && (
+            <section className="post-panel" aria-labelledby={`archived-${post.id}-heading`}>
+              <div className="post-panel__heading">
+                <p className="post-panel__eyebrow">Saved content</p>
+                <h3 id={`archived-${post.id}-heading`}>{post.brief}</h3>
+              </div>
+              {post.post_text && <pre className="post-copy">{post.post_text}</pre>}
+            </section>
           )}
 
           {post && post.status !== 'clarifying' && post.status !== 'needs_input' && (

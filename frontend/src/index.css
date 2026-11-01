@@ -207,6 +207,32 @@ a {
   font-weight: var(--font-weight-semibold);
 }
 
+.posts-history__switch {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-1);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-subtle);
+  padding: var(--space-1);
+}
+
+.posts-history__switch button {
+  min-height: var(--control-height-md);
+  border: 0;
+  border-radius: calc(var(--radius-md) - 2px);
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  cursor: pointer;
+}
+
+.posts-history__switch button[aria-pressed='true'] {
+  background: var(--color-surface);
+  color: var(--color-action);
+  box-shadow: var(--shadow-raised);
+}
+
 .posts-history__list {
   display: grid;
   /* Rows keep their content height and the list scrolls; without this the
@@ -260,6 +286,26 @@ a {
 .posts-history__status {
   font-size: var(--font-size-xs);
   line-height: var(--line-height-body);
+}
+
+.posts-history__notice,
+.posts-history__empty {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+  line-height: var(--line-height-body);
+}
+
+.posts-history__notice {
+  color: var(--color-warning);
+}
+
+.posts-history__empty {
+  padding: var(--space-3);
+}
+
+.post-lifecycle .post-actions {
+  justify-content: flex-end;
 }
 
 .post-panel,

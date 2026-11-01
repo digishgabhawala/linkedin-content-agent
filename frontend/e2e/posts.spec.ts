@@ -59,6 +59,8 @@ Resource constraints often reveal architecture problems before scale does.`,
   image_failure_kind: null,
   image_profile: null,
   image_started_at: null,
+  archived_at: null,
+  auto_archive_on: null,
   created_at: '2026-10-15T09:00:00Z',
   updated_at: '2026-10-16T07:00:00Z',
 }
@@ -101,7 +103,105 @@ async function mockPosts(page: Page, posts: Post[]) {
   })
 }
 
+async function mockPostArchiving(page: Page, initialPost: Post) {
+  let current = initialPost
+  await page.route('**/api/linkedin/posts**', async route => {
+    const request = route.request()
+    const url = new URL(request.url())
+    const pathname = url.pathname
+    if (pathname.endsWith('/posts') && request.method() === 'GET') {
+      const archived = url.searchParams.get('archived') === 'true'
+      await route.fulfill({ json: Boolean(current.archived_at) === archived ? [current] : [] })
+      return
+    }
+    if (pathname.endsWith('/posts/post-demo/archive')) {
+      current = { ...current, archived_at: '2026-11-01T03:00:00Z', auto_archive_on: null }
+      await route.fulfill({ json: current })
+      return
+    }
+    if (pathname.endsWith('/posts/post-demo/unarchive')) {
+      current = { ...current, status: 'locked', archived_at: null }
+      await route.fulfill({ json: current })
+      return
+    }
+    if (pathname.endsWith('/posts/post-demo/drafts')) {
+      await route.fulfill({ json: demoDrafts })
+      return
+    }
+    if (pathname.endsWith('/posts/post-demo')) {
+      await route.fulfill({ json: current })
+      return
+    }
+    await route.fallback()
+  })
+}
+
 test.describe('Posts workspace', () => {
+  test('archive asks for confirmation with the warning text and moves the post to Archived', async ({ page }) => {
+    await mockPostArchiving(page, {
+      ...demoPost,
+      archived_at: null,
+      auto_archive_on: null,
+    })
+    await page.goto('#posts?post=post-demo')
+
+    const warning = "Archiving deletes this post's image permanently. The text, drafts and scores are kept. You can unarchive later and generate a new image."
+    page.once('dialog', async dialog => {
+      expect(dialog.message()).toBe(warning)
+      await dialog.accept()
+    })
+    await page.getByRole('button', { name: 'Archive post' }).click()
+
+    await expect(page.getByRole('button', { name: 'Archived' })).toHaveAttribute('aria-pressed', 'true')
+    await expect(page.getByRole('complementary', { name: 'Archived posts' })).toContainText(demoPost.brief)
+  })
+
+  test('archived post shows read-only banner and Unarchive returns it to Active', async ({ page }) => {
+    await mockPostArchiving(page, {
+      ...demoPost,
+      status: 'ready',
+      archived_at: '2026-10-31T03:00:00Z',
+      auto_archive_on: null,
+    })
+    await page.goto('#posts')
+    await page.getByRole('button', { name: 'Archived' }).click()
+    await page.getByRole('button', { name: new RegExp(demoPost.brief) }).click()
+
+    await expect(page.getByRole('heading', { name: 'This post is archived' })).toBeVisible()
+    await expect(page.getByText('Archived posts are read-only.')).toBeVisible()
+    await page.getByRole('button', { name: 'Unarchive post' }).click()
+
+    await expect(page.getByRole('button', { name: 'Active' })).toHaveAttribute('aria-pressed', 'true')
+    await expect(page.getByRole('complementary', { name: 'Active posts' })).toContainText(demoPost.brief)
+  })
+
+  test('post near auto-archive shows the notice', async ({ page }) => {
+    await mockPosts(page, [{
+      ...demoPost,
+      archived_at: null,
+      auto_archive_on: '2026-11-05T03:00:00Z',
+    }])
+    await page.goto('#posts?post=post-demo')
+
+    await expect(page.getByText(/Archives automatically on .* unless edited/)).toHaveCount(2)
+  })
+
+  test('archive disabled while a step is running', async ({ page }) => {
+    await mockPosts(page, [{
+      ...demoPost,
+      archived_at: null,
+      auto_archive_on: null,
+      active_step: {
+        name: 'rewrite',
+        started_at: '2026-10-16T07:01:00Z',
+        task: null,
+      },
+    }])
+    await page.goto('#posts?post=post-demo')
+
+    await expect(page.getByRole('button', { name: 'Archive post' })).toBeDisabled()
+  })
+
   test('shows automatic rewrite attempt progress', async ({ page }) => {
     const rewritingPost: Post = {
       ...demoPost,
@@ -184,8 +284,8 @@ test.describe('Recent posts sidebar', () => {
     await mockPosts(page, posts)
     await page.goto('#posts')
 
-    const sidebar = page.getByRole('complementary', { name: 'Recent posts' })
-    await expect(sidebar.getByRole('button')).toHaveCount(12)
+    const sidebar = page.getByRole('complementary', { name: 'Active posts' })
+    await expect(sidebar.locator('.posts-history__item')).toHaveCount(12)
     const briefs = sidebar.locator('.posts-history__brief')
     for (const i of [0, 1, 11]) {
       const brief = briefs.nth(i)
