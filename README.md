@@ -432,9 +432,8 @@ version:
   derivation -- but the original vision of multiple characters with distinct
   POVs (e.g. one that asks security questions, one that asks ROI questions)
   hasn't been built.
-- **Writer profile templates.** Let each user define their profile from a
-  choice of templates. Today new users start from the admin's own
-  `user_profile.md`; replace that with a few neutral templates to pick from.
+- [x] **Writer profile templates.** New users choose from five neutral starting
+  profiles, while updating an existing profile from a template is deferred.
 - **Smaller stored images.** Renders are ~0.9 MB 1024x1024 PNGs; saving
   them as WebP (done in the worker before upload) would cut that ~5x.
   Not urgent: Supabase free tier's 1 GB holds ~1,000 images and we expect

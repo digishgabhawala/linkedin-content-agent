@@ -16,7 +16,7 @@ function character(id: string, hero: boolean, updatedAt: string) {
 async function mockApp(page: Page, characters: unknown[],
   onCreate?: (body: { brief: string; character_id?: string }) => object) {
   await page.route('**/api/linkedin/profile', r => r.fulfill({ json: {
-    profile_md: '# Asha', is_set: true, template: 'T', updated_at: null } }))
+    profile_md: '# Asha', is_set: true, templates: [], updated_at: null } }))
   await page.route('**/api/linkedin/characters', r => r.fulfill({ json: characters }))
   await page.route('**/api/linkedin/posts', r => {
     if (r.request().method() !== 'POST') return r.fulfill({ json: [] })
@@ -38,7 +38,7 @@ test('without a locked-hero character the new-post screen asks for a mascot', as
 test('a character_required refusal at create shows the mascot guidance', async ({ page }) => {
   let refused = false
   await page.route('**/api/linkedin/profile', r => r.fulfill({ json: {
-    profile_md: '# Asha', is_set: true, template: 'T', updated_at: null } }))
+    profile_md: '# Asha', is_set: true, templates: [], updated_at: null } }))
   // The hero was there when the page loaded, then is gone (e.g. another tab).
   await page.route('**/api/linkedin/characters', r => r.fulfill({ json: refused
     ? [] : [character('asha_bot', true, '2026-10-16T07:00:00Z')] }))

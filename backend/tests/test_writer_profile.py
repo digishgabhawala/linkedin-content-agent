@@ -6,11 +6,37 @@ from tests.test_steps import LONG_BRIEF
 API = "/api/linkedin"
 
 
-def test_unset_profile_offers_the_template(api, users):
+def test_templates_listed_in_order_with_labels():
+    templates = profile_service.templates()
+    assert [(template["id"], template["label"]) for template in templates] == [
+        ("junior_engineer", "Junior engineer"),
+        ("senior_engineer", "Senior engineer"),
+        ("engineering_manager", "Engineering manager"),
+        ("product_lead", "Product lead"),
+        ("platform_lead_architect", "Platform lead / architect"),
+    ]
+
+
+def test_template_body_excludes_front_matter():
+    for template in profile_service.templates():
+        assert template["profile_md"].startswith("# Writer profile")
+        assert not template["profile_md"].startswith("---")
+        assert "\nlabel:" not in template["profile_md"]
+        assert "\ndescription:" not in template["profile_md"]
+
+
+def test_every_template_fits_profile_limit():
+    for template in profile_service.templates():
+        assert len(template["profile_md"]) <= profile_service.MAX_PROFILE_CHARS
+        assert "[" in template["profile_md"]
+
+
+def test_profile_response_lists_templates(api, users):
     users("fresh", with_profile=False)
     body = api.get(f"{API}/profile").json()
     assert body["is_set"] is False and body["profile_md"] is None
-    assert body["template"] == profile_service.template() != ""
+    assert body["templates"] == profile_service.templates()
+    assert "template" not in body
 
 
 def test_save_and_read_back(api, users):
@@ -46,7 +72,6 @@ def test_prompts_use_the_post_owners_profile(api, users):
     assert "UNIQUE-PROFILE-A" in draft.messages[0]["content"]
     assert "UNIQUE-PROFILE-A" in rewrite.messages[0]["content"]
     assert "UNIQUE-PROFILE-A" in judge.messages[1]["content"]
-    assert profile_service.template()[:40] not in draft.messages[0]["content"]
 
 
 def test_profiles_are_per_user(api, users):

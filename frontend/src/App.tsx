@@ -122,7 +122,7 @@ export default function App() {
     refreshHistory()
   }, [refreshHistory])
 
-  // First use: no writer profile yet -> open the Profile tab with the template.
+  // First use: no writer profile yet -> open the Profile tab and template picker.
   function openOnboarding() {
     setOnboarding(true)
     window.location.hash = '#profile'

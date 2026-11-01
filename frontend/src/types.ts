@@ -253,9 +253,16 @@ export interface LockHeroCandidateResult {
   candidate: HeroCandidate
 }
 
+export interface ProfileTemplate {
+  id: string
+  label: string
+  description: string
+  profile_md: string
+}
+
 export interface WriterProfile {
   profile_md: string | null
   is_set: boolean
-  template: string
+  templates: ProfileTemplate[]
   updated_at: string | null
 }
