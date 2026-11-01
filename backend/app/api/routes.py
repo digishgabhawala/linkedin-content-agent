@@ -475,7 +475,7 @@ def auth_me(user: AuthUser = Depends(current_user)):
 def _serialize_profile(profile) -> dict:
     return {"profile_md": profile.profile_md if profile else None,
             "is_set": profile is not None,
-            "template": profile_service.template(),
+            "templates": profile_service.templates(),
             "updated_at": _utc_iso(profile.updated_at) if profile else None}
 
 

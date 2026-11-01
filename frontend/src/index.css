@@ -403,6 +403,7 @@ a {
 
 .post-field input,
 .post-field textarea,
+.post-field select,
 .post-feedback-fields input,
 .post-feedback-fields select {
   min-height: var(--control-height-md);
@@ -422,6 +423,7 @@ a {
 
 .post-field input:hover,
 .post-field textarea:hover,
+.post-field select:hover,
 .post-feedback-fields input:hover,
 .post-feedback-fields select:hover {
   border-color: var(--color-field-border-hover);
@@ -429,6 +431,7 @@ a {
 
 .post-field input:focus,
 .post-field textarea:focus,
+.post-field select:focus,
 .post-feedback-fields input:focus,
 .post-feedback-fields select:focus {
   border-color: var(--color-field-border-focus);

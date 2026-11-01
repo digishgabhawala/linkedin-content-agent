@@ -32,6 +32,7 @@ class Settings(BaseSettings):
 
     # WHO (user_profile.md) / HOW (skill.md) config -- see CONTENT_QUALITY_DESIGN.md.
     user_profile_path: str = str(_BACKEND_DIR / "content_config/user_profile.md")
+    profile_templates_path: str = str(_BACKEND_DIR / "content_config/profile_templates")
     skill_path: str = str(_BACKEND_DIR / "content_config/skill.md")
     example_posts_path: str = str(_BACKEND_DIR / "content_config/example_posts.md")
     scene_examples_path: str = str(_BACKEND_DIR / "content_config/scene_examples.md")
