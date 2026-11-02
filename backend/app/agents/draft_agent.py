@@ -82,18 +82,28 @@ def build_system_prompt(personality: str | None, category: str | None = None, *,
 _CATEGORY_LIST = "\n".join(f"- {name}: {desc}" for name, desc in CATEGORIES.items())
 
 CLARIFY_SYSTEM_PROMPT = f"""You collect the raw material for ghostwriting a strong LinkedIn \
-post from a rough, informal brief about what a software engineer worked on. Your job is to \
+post from a rough, informal brief about what the writer worked on, decided, led, or learned. Your job is to \
 make sure enough REAL material exists before any writing starts -- the writer downstream is \
-never allowed to invent a number, tool, incident, or root cause, so anything you don't \
+never allowed to invent a number, customer detail, incident, tool, decision rationale, or \
+root cause, so anything you don't \
 collect here simply cannot appear in the post. Garbage in, garbage out: a thin brief \
 produces a thin post, and fixing that is YOUR responsibility, at this stage, by asking.
 
 You are given the post's CATEGORY, which changes what material matters most:
 {_CATEGORY_LIST}
 
+You are also given the WRITER PROFILE. Use it to understand the writer's role and \
+professional context, then tailor both your question AND its parenthesised example answer \
+to that role and this brief. For example, a product lead's examples may concern adoption, \
+customers, or trade-offs; a manager's may concern the team, hiring, or delivery; and an \
+engineer's may concern system behaviour or implementation. The profile is context, not source \
+material for this post: never copy its personal specifics into an example, never assume the \
+writer did something merely because it fits their role, and never invent facts about them.
+
 A strong post (target 1500-2200 characters) needs SEVERAL real facts, not one: what \
-happened, the mechanism/reasoning behind it, at least one concrete number or outcome, what \
-was tried that didn't work, and why it mattered. One concrete detail is the bare minimum to \
+happened or was decided, the reasoning or mechanism behind it, at least one concrete number \
+or outcome, a trade-off, challenge, or alternative that was tried, and why it mattered. One \
+concrete detail is the bare minimum to \
 avoid fabrication -- it is NOT "enough". Judge the brief plus the clarification transcript \
 so far against that bar for this category (e.g. a technical_deep_dive needs the root cause \
 AND a before/after outcome; a trending_topic needs the user's actual OPINION and at least \
@@ -111,7 +121,8 @@ will honestly surface thin material downstream instead of padding it.
 dimension. CRITICAL: most users do not know what "more detail" means until they see an \
 example, so your question MUST include a concrete example of the kind of answer that would \
 help, in parentheses. For example: "what was the actual before/after number or outcome? \
-(e.g. 'latency dropped from 800ms to 140ms', or 'crossed 1000 users')" -- not just "can you \
+(e.g. 'weekly adoption rose from 40% to 65%', 'approval time fell from two days to two \
+hours', or 'latency dropped from 800ms to 140ms')" -- not just "can you \
 give more detail?". Before asking, re-read the ORIGINAL BRIEF word by word: never ask for \
 something the brief or the transcript already states -- asking for a detail the user already \
 gave wastes one of very few questions and tells the user you didn't read their brief.
@@ -133,60 +144,56 @@ Respond with ONLY this JSON object, nothing else:
 _CALIBRATION_EXAMPLE = """WORKED EXAMPLE (study this -- it shows exactly what "don't invent \
 facts" means in practice):
 
-BRIEF GIVEN: "trained a character LoRA on mflux (MLX-native, runs fully on-Mac) for a \
-mascot character. It kept OOMing at 1024px resolution during training. Dropped to 768px \
-which fixed it. Then even at 768px it died around step 143 without --low-ram. Adding \
---low-ram plus a --mlx-cache-limit-gb flag fixed it completely, with zero speed cost. \
-Two days of debugging total."
+BRIEF GIVEN: "Our release sign-off took two days because I had to chase six approvers by \
+hand. We first tried a shared checklist, but ownership kept going stale. I then automated \
+the reminders and status roll-up. Sign-off now takes two hours and the team ships every \
+week. The change took three weeks to put in place."
 
 CORRECT -- uses only what was actually stated, connective narration stays general. Note \
 the opening does NOT use a "spent X time chasing Y -- here's what fixed it" template -- \
 vary hook phrasing every time (see skill.md's hook formula section for why):
-"Two OOM crashes, two different root causes, training a character LoRA on my Mac with \
-mflux (fully on-device, no cloud GPU).
+"Six approvers. Two days to get a release signed off.
 
-First one hit at 1024px resolution. Dropping to 768px got past that.
+The first fix was a shared checklist. It looked tidy, but the ownership kept going stale, \
+so I was still chasing people by hand.
 
-Then at 768px it started dying around step 143 instead -- a slower, sneakier failure \
-than the first crash.
+We replaced that manual chase with automated reminders and a status roll-up.
 
-The fix was two flags: --low-ram and --mlx-cache-limit-gb. Both crashes gone, and no \
-drop in training speed.
+Three weeks later, sign-off takes two hours instead of two days -- and the team ships \
+every week.
 
-Two days of debugging for what turned out to be a one-line fix. Anyone else running \
-local LoRA training on Apple Silicon -- what's your go-to for memory issues?"
+The useful lesson wasn't 'make a better checklist.' It was to automate the ownership \
+work the checklist couldn't keep current. What part of your release process still depends \
+on someone chasing an answer?"
 
-WRONG -- do NOT do this, even though it reads more "technical":
-"...OOM at 30% training completion... capped GPU memory allocation with \
---mlx-cache-limit-gb=4... root cause was unbounded cache growth during gradient \
-accumulation..."
-None of "30% completion", the value "4", or "unbounded cache growth during gradient \
-accumulation" as the stated root cause were in the brief. They sound plausible and \
+WRONG -- do NOT do this, even though it reads more "complete":
+"...an 83% faster approval cycle... a Slack bot routed each request to the right department \
+and eliminated missed launch dates..."
+None of "83%", "Slack bot", "department", or "missed launch dates" were in the brief. \
+They sound plausible and \
 specific, which is exactly why this mistake is easy to make and exactly why it's not \
 allowed -- the post must only claim what was actually said.
 
 SECOND EXAMPLE -- this failure mode is WORST on a thin brief with few real facts, \
 because there's a pull to invent detail just to have enough material. Resist it.
 
-BRIEF GIVEN: "fixed an OOM crash in the image pipeline by switching to low-ram mode, \
-zero speed cost"
-(That's it. No percentage, no phase-of-execution, no named root cause, no duration.)
+BRIEF GIVEN: "shortened our approval cycle by automating sign-off, and now the team \
+ships every week"
+(That's it. No before/after time, no tool, no number of approvers, no duration.)
 
 CORRECT -- shorter and honest beats padded and invented:
-"Fixed an OOM crash in our image pipeline today -- switching to low-ram mode cleared \
-it, with no speed cost.
+"We shortened our approval cycle by automating sign-off.
 
-No tradeoff I expected going in -- usually a memory fix like this costs you something \
-in throughput. Not this time.
+The practical result is simple: the team now ships every week.
 
-Small change, real relief. Anyone else found a memory fix that didn't cost you \
-anything in return?"
+Sometimes the highest-leverage process change is the hand-off nobody should need to chase. \
+What hand-off would you automate first?"
 
 WRONG -- do NOT do this:
-"...OOM at 80% completion during batch processing... reduced memory usage by 40%... \
-root cause was unbounded temporary buffer growth during tensor reshaping..."
-"80% completion", "batch processing", "40%", and "unbounded temporary buffer growth \
-during tensor reshaping" are ALL invented -- the brief never said any of it. A short, \
+"...cut twelve manual steps to three with a Jira workflow... adoption rose 40% after \
+the first month..."
+"twelve steps", "three", "Jira", "40%", and "the first month" are ALL invented -- \
+the brief never said any of it. A short, \
 honest 400-character post is the correct output here, not a padded 900-character one \
 built on invented specifics."""
 
@@ -230,9 +237,11 @@ def _format_transcript(transcript: list[dict]) -> str:
     return "\n".join(lines)
 
 
-def build_clarify_request(brief: str, transcript: list[dict], category: str) -> LLMRequest:
+def build_clarify_request(brief: str, transcript: list[dict], category: str, *,
+                          user_profile: str) -> LLMRequest:
     """One clarify turn; parse_clarify gives {"done": bool, "question": str | None}."""
     user_content = (f"CATEGORY: {category}\n\n"
+                    f"WRITER PROFILE:\n{user_profile}\n\n"
                     f"ORIGINAL BRIEF:\n{brief}\n\n"
                     f"CLARIFICATION SO FAR:\n{_format_transcript(transcript)}\n\n"
                     f"QUESTIONS ASKED SO FAR: {len(transcript)} (hard cap "
@@ -268,19 +277,26 @@ short (the judge's reasoning), and whether it needs new material or a different 
 Write ONE short, concrete message to the user covering all the failing pillars given:
 - For a pillar needing NEW MATERIAL: ask a specific question with a concrete example of the \
 kind of detail that would help, e.g. "what was the actual before/after number or outcome? \
-(e.g. 'latency dropped from 800ms to 140ms')" -- never just "can you add more detail?"
+(e.g. 'weekly adoption rose from 40% to 65%' or 'approval time fell from two days to two \
+hours')" -- never just "can you add more detail?"
 - For a pillar needing a DIFFERENT ANGLE: briefly explain why the topic itself scored low \
 here, and ask whether they want to reframe it or proceed anyway at the lower score.
+
+Use the WRITER PROFILE to tailor the question and its parenthesised example to the writer's \
+role and this brief. Product examples may concern adoption, customers, or trade-offs; manager \
+examples may concern the team, hiring, or delivery. Treat the profile only as role context: \
+never reuse its personal specifics as post facts and never invent facts about the writer.
 
 Keep it short, direct, and specific to the actual reasons given -- not generic. Respond with \
 ONLY the message text, no preamble, no "Here's the message:"."""
 
 
 def build_escalation_request(brief: str, category: str,
-                             failing_pillars: list[dict]) -> LLMRequest:
+                             failing_pillars: list[dict], *, user_profile: str) -> LLMRequest:
     """failing_pillars: [{"pillar": str, "reason": str, "fix_type": "needs_material"|"needs_angle"}, ...]"""
     lines = [f"- {f['pillar']} ({f['fix_type']}): {f['reason']}" for f in failing_pillars]
-    user_content = (f"CATEGORY: {category}\n\nORIGINAL BRIEF:\n{brief}\n\n"
+    user_content = (f"CATEGORY: {category}\n\nWRITER PROFILE:\n{user_profile}\n\n"
+                    f"ORIGINAL BRIEF:\n{brief}\n\n"
                     f"FAILING PILLARS:\n" + "\n".join(lines))
     return _request(_ESCALATION_SYSTEM_PROMPT, user_content, think=False, temperature=0.4)
 

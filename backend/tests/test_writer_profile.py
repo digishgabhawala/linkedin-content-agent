@@ -1,4 +1,5 @@
 """Per-user writer profile: API, size limits, onboarding refusal, prompts."""
+from app.agents.draft_agent import CLARIFY_SYSTEM_PROMPT
 from app.db.models import Post
 from app.services import profile_service, steps
 from tests.test_steps import LONG_BRIEF
@@ -63,15 +64,31 @@ def test_prompts_use_the_post_owners_profile(api, users):
     users("user-a", with_profile=False)
     api.put(f"{API}/profile", json={"profile_md": "UNIQUE-PROFILE-A"})
     with api.session_factory() as s:
-        post = Post(owner_id="user-a", brief=LONG_BRIEF, status="drafting", post_text="t")
+        post = Post(owner_id="user-a", brief=LONG_BRIEF, status="drafting", post_text="t",
+                    category="milestone")
         s.add(post)
         s.commit()
+        _, clarify = steps.build(s, post, "clarify", {})
         _, draft = steps.build(s, post, "draft", {})
         _, judge = steps.build(s, post, "judge", {})
         _, rewrite = steps.build(s, post, "rewrite", {"instruction": "shorter"})
+        _, escalation = steps.build(s, post, "escalation", {"failing": [{
+            "pillar": "factual_integrity", "fix_type": "needs_material",
+            "reason": "The outcome is unclear",
+        }]})
+    assert "WRITER PROFILE:\nUNIQUE-PROFILE-A" in clarify.messages[1]["content"]
+    assert "WRITER PROFILE:\nUNIQUE-PROFILE-A" in escalation.messages[1]["content"]
     assert "UNIQUE-PROFILE-A" in draft.messages[0]["content"]
     assert "UNIQUE-PROFILE-A" in rewrite.messages[0]["content"]
     assert "UNIQUE-PROFILE-A" in judge.messages[1]["content"]
+
+
+def test_clarify_prompt_is_role_neutral_and_tailors_examples():
+    prompt = CLARIFY_SYSTEM_PROMPT.lower()
+    assert "what a software engineer worked on" not in prompt
+    assert "worked on, decided, led, or learned" in prompt
+    assert "product lead" in prompt and "manager" in prompt
+    assert "parenthesised example answer" in prompt
 
 
 def test_profiles_are_per_user(api, users):

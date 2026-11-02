@@ -33,7 +33,7 @@ function CharacterChoice({ characters, loading, onSetCharacter }: {
       {withHero.length > 0 ? (
         <div className="flex flex-wrap items-center gap-2">
           <select aria-label="Character" value={selected} onChange={e => setChoice(e.target.value)}
-            disabled={loading} className="rounded-lg border border-gray-300 px-3 py-2 text-sm">
+            disabled={loading} className="app-select rounded-lg border border-gray-300 px-3 py-2 text-sm">
             {withHero.map(c => (
               <option key={c.character_id} value={c.character_id}>
                 {c.display_name || c.character_id}

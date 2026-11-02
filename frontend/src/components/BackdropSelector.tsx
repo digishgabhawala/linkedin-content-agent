@@ -39,6 +39,7 @@ export function BackdropSelector({ post, loading, onChange, onUseLatest }: Props
         <label htmlFor={`post-${post.id}-backdrop`}>Backdrop for this image</label>
         <select
           id={`post-${post.id}-backdrop`}
+          className="app-select"
           value={post.scene_asset_name ?? ''}
           onChange={event => onChange(event.target.value || null)}
           disabled={loading || loadError}

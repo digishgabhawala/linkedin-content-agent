@@ -8,7 +8,7 @@ const START_BLANK = 'start-blank'
 
 interface Props {
   onboarding: boolean
-  onSaved: () => void
+  onSaved: (firstSave: boolean) => void
 }
 
 /** The writer profile: who the user is, in Markdown. The draft and the judge
@@ -65,12 +65,13 @@ export function ProfilePage({ onboarding, onSaved }: Props) {
     setError(null)
     setNotice(null)
     try {
+      const firstSave = isSet === false
       const saved = await api.saveProfile(text)
       setText(saved.profile_md ?? text)
       setIsSet(saved.is_set)
       setTemplates(saved.templates)
       setNotice('Profile saved.')
-      onSaved()
+      onSaved(firstSave)
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Could not save your profile')
     } finally {
@@ -109,6 +110,7 @@ export function ProfilePage({ onboarding, onSaved }: Props) {
               <label htmlFor="profile-template">Start from a template</label>
               <select
                 id="profile-template"
+                className="app-select"
                 value={templateChoice}
                 onChange={event => chooseTemplate(event.target.value)}
               >

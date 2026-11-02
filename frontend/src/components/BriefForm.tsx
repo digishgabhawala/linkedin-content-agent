@@ -35,7 +35,7 @@ export function BriefForm({ onSubmit, loading, mascots }: Props) {
         <textarea
           id="post-brief"
           rows={6}
-          placeholder="For example: I fixed an out-of-memory crash in the image pipeline by switching to a lower-memory mode, with no measurable speed cost."
+          placeholder="For example: We cut our release checklist from two days to two hours by automating the sign-off steps, and the team now ships every week."
           value={brief}
           onChange={e => setBrief(e.target.value)}
           disabled={loading}
@@ -46,7 +46,7 @@ export function BriefForm({ onSubmit, loading, mascots }: Props) {
         <div className="post-field">
           <label htmlFor="post-mascot">Mascot</label>
           <select id="post-mascot" value={mascot} onChange={e => setChoice(e.target.value)}
-            disabled={loading} className="rounded-lg border border-gray-300 px-3 py-2 text-sm">
+            disabled={loading} className="app-select rounded-lg border border-gray-300 px-3 py-2 text-sm">
             {mascots.map(c => (
               <option key={c.character_id} value={c.character_id}>
                 {c.display_name || c.character_id}

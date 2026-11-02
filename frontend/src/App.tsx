@@ -478,10 +478,10 @@ export default function App() {
             {session.email && (
               <div className="flex items-center gap-2 text-xs text-gray-600">
                 <span>{session.email}</span>
-                <a href="/account" className="min-h-11 rounded-lg border border-gray-300 px-3 py-2 hover:bg-gray-50">
+                <a href="/account" className="inline-flex h-11 items-center justify-center rounded-lg border border-gray-300 px-3 py-2 font-medium leading-none hover:bg-gray-50">
                   Account
                 </a>
-                <button onClick={session.signOut} className="min-h-11 rounded-lg border border-gray-300 px-3 py-2 hover:bg-gray-50">
+                <button type="button" onClick={session.signOut} className="inline-flex h-11 items-center justify-center rounded-lg border border-gray-300 px-3 py-2 font-medium leading-none hover:bg-gray-50">
                   Sign out
                 </button>
               </div>
@@ -551,7 +551,10 @@ export default function App() {
             <p role="status" className="text-sm text-gray-600">Loading Profile…</p>
           </main>
         )}>
-          <ProfilePage onboarding={onboarding} onSaved={() => setOnboarding(false)} />
+          <ProfilePage onboarding={onboarding} onSaved={(firstSave) => {
+            setOnboarding(false)
+            if (firstSave) window.location.hash = '#characters'
+          }} />
         </Suspense>
       ) : activeView === 'backdrops' ? (
         <Suspense fallback={(

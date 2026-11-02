@@ -96,18 +96,18 @@ PILLAR (found live, 2026-07-18: a fabricated post was scored 10/10 on factual_in
 the judge's own reasoning quoting the fabricated detail as evidence of grounding -- this is \
 the exact mistake this example exists to prevent):
 
-BRIEF GIVEN: "the biggest thing I got wrong early in my career was believing more abstraction \
-always meant better code. I used to add interfaces and layers preemptively for flexibility I \
-never needed. Now I wait until I have two real use cases before abstracting anything."
+BRIEF GIVEN: "Our release sign-off took two days because I had to chase six approvers. A \
+shared checklist did not fix the stale ownership, so I automated reminders and the status \
+roll-up. Sign-off now takes two hours and the team ships every week."
 
-DRAFT BEING GRADED: "...The first time I saw that approach backfire? A service that spent \
-months in review because every possible edge case had been preemptively abstracted into a \
-labyrinth. No one could tell what the damn thing was supposed to do..."
+DRAFT BEING GRADED: "...The turning point came after a major customer launch slipped by a \
+week. I built a Slack bot that routed every approval to the right department, cutting the \
+cycle by 83%..."
 
-CORRECT SCORE: factual_integrity 2/10, reason: "the 'service that spent months in review' \
-incident, the 'labyrinth' framing, and 'no one could tell what it was supposed to do' are ALL \
-invented -- none of that specific incident was in the brief, which only described a general \
-belief and a general habit change, no specific project or outcome." This is the ONLY correct \
+CORRECT SCORE: factual_integrity 2/10, reason: "the customer launch, one-week delay, Slack \
+bot, department routing, and 83% figure are ALL invented -- the brief described manual \
+chasing, a failed shared checklist, automated reminders and status roll-up, and the stated \
+two-day to two-hour result, but none of those added specifics." This is the ONLY correct \
 score even though the anecdote reads as vivid, specific, and well-written -- fluency and \
 grounding are different things, and a fabricated detail dressed up as a specific memory is \
 WORSE than an obviously vague one, because it's more convincing.

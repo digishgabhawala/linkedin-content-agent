@@ -136,7 +136,7 @@ function CharacterForm({
         next[`attribute-${index}`] = 'Add both a name and a prompt phrase, or remove this attribute.'
       }
       if (attribute.color_hex && !/^#[0-9A-Fa-f]{6}$/.test(attribute.color_hex)) {
-        next[`attribute-${index}`] = 'Use a six-digit hex colour such as #4946C7.'
+        next[`attribute-${index}`] = 'Use a six-digit hex colour such as #3D7A6B.'
       }
     })
     return next
@@ -236,7 +236,7 @@ function CharacterForm({
                 autoComplete="off"
                 spellCheck={false}
                 required
-                placeholder="e.g. pragmatic_dev…"
+                placeholder="e.g. team_guide…"
               />
               <small id="character-id-help">A permanent, URL-safe ID. It cannot be changed later.</small>
               {errors.character_id && <small id="character-id-error" className="studio-field__error">{errors.character_id}</small>}
@@ -252,7 +252,7 @@ function CharacterForm({
                 aria-describedby={errors.display_name ? 'display-name-error' : undefined}
                 autoComplete="off"
                 required
-                placeholder="e.g. Pragmatic Developer…"
+                placeholder="e.g. Team Guide…"
               />
               {errors.display_name && <small id="display-name-error" className="studio-field__error">{errors.display_name}</small>}
             </label>
@@ -274,7 +274,7 @@ function CharacterForm({
               aria-describedby={`base-description-help${errors.base_description ? ' base-description-error' : ''}`}
               autoComplete="off"
               required
-              placeholder="e.g. An Indian software developer in their early thirties, warm expression, clean silhouette…"
+              placeholder="e.g. A friendly human character with short curly hair, round glasses, and a clean silhouette…"
             />
             <small id="base-description-help">Include age range, build, face, hair, and other traits that identify the character.</small>
             {errors.base_description && <small id="base-description-error" className="studio-field__error">{errors.base_description}</small>}
@@ -327,7 +327,7 @@ function CharacterForm({
                     aria-invalid={Boolean(errors[`attribute-${index}`])}
                     aria-describedby={errors[`attribute-${index}`] ? `attribute-${index}-error` : undefined}
                     autoComplete="off"
-                    placeholder="e.g. Indigo hoodie…"
+                    placeholder="e.g. Round glasses…"
                   />
                 </label>
                 <label className="studio-field studio-attribute__prompt">
@@ -339,7 +339,7 @@ function CharacterForm({
                     aria-invalid={Boolean(errors[`attribute-${index}`])}
                     aria-describedby={errors[`attribute-${index}`] ? `attribute-${index}-error` : undefined}
                     autoComplete="off"
-                    placeholder="e.g. Wearing a plain indigo zip hoodie…"
+                    placeholder="e.g. Wearing thin round glasses…"
                   />
                 </label>
                 <label className="studio-field studio-field--colour">
@@ -352,7 +352,7 @@ function CharacterForm({
                     aria-describedby={errors[`attribute-${index}`] ? `attribute-${index}-error` : undefined}
                     autoComplete="off"
                     spellCheck={false}
-                    placeholder="e.g. #4946C7…"
+                    placeholder="e.g. #3D7A6B…"
                   />
                 </label>
                 {form.signature_attributes.length > 1 && (
@@ -439,11 +439,13 @@ function CharacterForm({
 
 function CandidateCard({
   candidate,
+  candidateNumber,
   characterName: name,
   locking,
   onLock,
 }: {
   candidate: HeroCandidate
+  candidateNumber: number
   characterName: string
   locking: boolean
   onLock: () => void
@@ -455,14 +457,13 @@ function CandidateCard({
         {candidate.image_url ? (
           <img
             src={candidate.image_url}
-            alt={`${name} hero candidate, seed ${candidate.seed}`}
+            alt={`${name} hero candidate ${candidateNumber}`}
             loading="lazy"
             width="640"
             height="640"
           />
         ) : (
           <div className="studio-candidate__placeholder" aria-hidden="true">
-            <span className="studio-candidate__seed">{candidate.seed}</span>
             <span>{candidate.status === 'failed' ? 'No image' : 'Rendering'}</span>
           </div>
         )}
@@ -470,7 +471,7 @@ function CandidateCard({
       </div>
       <div className="studio-candidate__body">
         <div>
-          <p className="studio-mono">Seed {candidate.seed}</p>
+          <p className="studio-mono">Candidate {candidateNumber}</p>
           <p className="studio-candidate__id" title={candidate.id}>Candidate {candidate.id.slice(0, 8)}</p>
         </div>
         {candidate.is_active_hero ? (
@@ -510,7 +511,6 @@ function CharacterWorkspace({
 }) {
   const [candidateCount, setCandidateCount] = useState(4)
   const [profile, setProfile] = useState<'full' | 'lightning'>('full')
-  const [baseSeed, setBaseSeed] = useState('')
   const [generating, setGenerating] = useState(false)
   const [lockingId, setLockingId] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
@@ -546,17 +546,11 @@ function CharacterWorkspace({
     event.preventDefault()
     setActionError(null)
     setSuccessMessage(null)
-    const parsedSeed = baseSeed.trim() ? Number(baseSeed) : undefined
-    if (parsedSeed !== undefined && (!Number.isInteger(parsedSeed) || parsedSeed < 0)) {
-      setActionError('Base seed must be a non-negative whole number.')
-      return
-    }
     setGenerating(true)
     try {
       const run = await api.startHeroGeneration(character.character_id, {
         candidate_count: candidateCount,
         profile,
-        ...(parsedSeed === undefined ? {} : { base_seed: parsedSeed }),
       })
       onRunCreated(run)
       setSuccessMessage(`${candidateCount} candidates submitted to the render queue.`)
@@ -574,7 +568,7 @@ function CharacterWorkspace({
     try {
       const result = await api.lockHeroCandidate(character.character_id, candidate.id)
       onHeroLocked(result.character, result.candidate.id)
-      setSuccessMessage(`Seed ${candidate.seed} is now ${characterName(result.character)}’s hero image.`)
+      setSuccessMessage(`This candidate is now ${characterName(result.character)}’s hero image.`)
     } catch (error) {
       setActionError(error instanceof Error ? error.message : 'Could not lock this candidate.')
     } finally {
@@ -625,6 +619,7 @@ function CharacterWorkspace({
             <select
               id="candidate-count"
               name="candidate_count"
+              className="app-select"
               value={candidateCount}
               onChange={(event) => setCandidateCount(Number(event.target.value))}
               disabled={generating}
@@ -643,25 +638,6 @@ function CharacterWorkspace({
               <span><strong>Lightning</strong><small>Faster exploration</small></span>
             </label>
           </fieldset>
-          <details className="studio-advanced">
-            <summary>Advanced</summary>
-            <label className="studio-field" htmlFor="base-seed">
-              <span>Base seed</span>
-              <input
-                id="base-seed"
-                name="base_seed"
-                type="number"
-                min="0"
-                step="1"
-                inputMode="numeric"
-                value={baseSeed}
-                onChange={(event) => setBaseSeed(event.target.value)}
-                autoComplete="off"
-                placeholder="Generated automatically…"
-              />
-              <small>Candidate seeds increment from this number.</small>
-            </label>
-          </details>
           <button className="studio-button studio-button--primary studio-generation-form__submit" type="submit" disabled={generating}>
             {generating ? 'Submitting tasks…' : 'Generate candidates'}
           </button>
@@ -718,10 +694,11 @@ function CharacterWorkspace({
               </p>
             )}
             <div className="studio-candidate-grid">
-              {selectedRun.candidates.map((candidate) => (
+              {selectedRun.candidates.map((candidate, index) => (
                 <CandidateCard
                   key={candidate.id}
                   candidate={candidate}
+                  candidateNumber={index + 1}
                   characterName={characterName(character)}
                   locking={lockingId === candidate.id}
                   onLock={() => lock(candidate)}

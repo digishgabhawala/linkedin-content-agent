@@ -90,13 +90,17 @@ test('switching template after typing asks for confirmation', async ({ page }) =
 })
 
 test('saved profile hides the picker and shows the disabled coming-soon button', async ({ page }) => {
-  await mockProfile(page, { profile_md: '# Asha', is_set: true })
+  await mockProfile(page, { profile_md: '# Writer', is_set: true })
   await page.goto('#profile')
 
   await expect(page.getByRole('combobox', { name: 'Start from a template' })).toHaveCount(0)
   await expect(page.getByRole('button', {
     name: 'Update profile from template · Coming soon',
   })).toBeDisabled()
+  await page.getByRole('textbox', { name: 'Writer profile' }).fill('# Writer\n\nUpdated role')
+  await page.getByRole('button', { name: 'Save profile' }).click()
+  await expect(page).toHaveURL(/#profile$/)
+  await expect(page.getByText('Profile saved.')).toBeVisible()
 })
 
 test('warning disappears once no [bracketed] parts remain', async ({ page }) => {
@@ -108,8 +112,39 @@ test('warning disappears once no [bracketed] parts remain', async ({ page }) => 
   await expect(warning).toBeVisible()
 
   await page.getByRole('textbox', { name: 'Writer profile' })
-    .fill('# Writer profile\n\nAsha builds APIs.')
+    .fill('# Writer profile\n\nI lead a cross-functional product team.')
   await expect(warning).toHaveCount(0)
+})
+
+test('first profile save continues to Character Studio', async ({ page }) => {
+  await page.route('**/api/linkedin/profile', route => {
+    if (route.request().method() === 'PUT') {
+      expect(route.request().postDataJSON()).toEqual({
+        profile_md: '# Writer profile\n\nI lead a cross-functional product team.',
+      })
+      return route.fulfill({ json: {
+        profile_md: '# Writer profile\n\nI lead a cross-functional product team.',
+        is_set: true,
+        templates: TEMPLATES,
+        updated_at: '2026-11-02T08:00:00Z',
+      } })
+    }
+    return route.fulfill({ json: {
+      profile_md: null,
+      is_set: false,
+      templates: TEMPLATES,
+      updated_at: null,
+    } })
+  })
+  await page.route('**/api/linkedin/characters', route => route.fulfill({ json: [] }))
+  await page.goto('#profile')
+
+  await page.getByRole('textbox', { name: 'Writer profile' })
+    .fill('# Writer profile\n\nI lead a cross-functional product team.')
+  await page.getByRole('button', { name: 'Save profile' }).click()
+
+  await expect(page).toHaveURL(/#characters$/)
+  await expect(page.getByRole('heading', { name: 'Character Studio' })).toBeVisible()
 })
 
 test('a profile over 8000 characters cannot be saved', async ({ page }) => {

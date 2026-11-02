@@ -356,7 +356,7 @@ export function BackdropsPage() {
                 id="new-backdrop-name"
                 value={newName}
                 onChange={event => setNewName(event.target.value)}
-                placeholder="Home desk"
+                placeholder="Team room"
                 maxLength={80}
                 required
               />
@@ -370,7 +370,7 @@ export function BackdropsPage() {
                 id="new-backdrop-detail"
                 value={newDetail}
                 onChange={event => setNewDetail(event.target.value)}
-                placeholder="A warm desk lamp beside a monitor showing an abstract line graph, with a small toolkit on the desk"
+                placeholder="A bright meeting room with a whiteboard, a wooden table, and soft daylight"
                 rows={4}
                 maxLength={1500}
                 required

@@ -186,7 +186,9 @@ def build(db: Session, post: Post, step: str, ctx: dict):
     if step == "category":
         return "text", build_category_request(post.brief)
     if step == "clarify":
-        return "text", build_clarify_request(post.brief, _transcript(post), post.category)
+        return "text", build_clarify_request(
+            post.brief, _transcript(post), post.category,
+            user_profile=profile_text(db, post.owner_id))
     if step == "draft":
         return "text", build_draft_request(post.brief, _transcript(post), _personality(post),
                                            post.category,
@@ -200,7 +202,9 @@ def build(db: Session, post: Post, step: str, ctx: dict):
             post.post_text, post.brief, _transcript(post), post.category,
             _personality(post), profile_text(db, post.owner_id))
     if step == "escalation":
-        return "text", build_escalation_request(post.brief, post.category, ctx["failing"])
+        return "text", build_escalation_request(
+            post.brief, post.category, ctx["failing"],
+            user_profile=profile_text(db, post.owner_id))
     if step == "scene":
         return "text", build_scene_request(post.post_text)
     if step == "image":

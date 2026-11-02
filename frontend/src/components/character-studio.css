@@ -345,7 +345,7 @@
 
 .studio-generation-form {
   display: grid;
-  grid-template-columns: minmax(8rem, 0.7fr) minmax(18rem, 1.6fr) minmax(9rem, 0.8fr) auto;
+  grid-template-columns: minmax(8rem, 0.7fr) minmax(18rem, 1.6fr) auto;
   gap: var(--space-5);
   align-items: end;
   margin-top: var(--space-6);
@@ -472,31 +472,6 @@
 .studio-profile-options small {
   color: var(--color-text-muted);
   font-size: var(--font-size-xs);
-}
-
-.studio-advanced {
-  min-width: 0;
-  padding-bottom: 0.15rem;
-}
-
-.studio-advanced summary {
-  min-height: var(--control-height-md);
-  align-content: center;
-  color: var(--color-text);
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-semibold);
-  cursor: pointer;
-}
-
-.studio-advanced[open] {
-  grid-column: 1 / -1;
-  padding: var(--space-4);
-  border-top: 1px solid var(--color-border);
-}
-
-.studio-advanced[open] .studio-field {
-  max-width: 18rem;
-  margin-top: var(--space-3);
 }
 
 .studio-generation-form__submit {
@@ -644,13 +619,6 @@
   color: var(--color-text-muted);
   font-size: var(--font-size-xs);
   text-align: center;
-}
-
-.studio-candidate__seed {
-  color: var(--color-text-strong);
-  font-family: var(--font-family-mono);
-  font-size: var(--font-size-2xl);
-  font-variant-numeric: tabular-nums;
 }
 
 .studio-candidate__status {
@@ -835,14 +803,6 @@
 }
 
 @media (max-width: 72rem) {
-  .studio-generation-form {
-    grid-template-columns: minmax(8rem, 0.7fr) minmax(18rem, 1.6fr) auto;
-  }
-
-  .studio-advanced {
-    grid-column: 1 / -1;
-  }
-
   .studio-candidate-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -904,11 +864,6 @@
 
   .studio-generation-form {
     grid-template-columns: 1fr;
-  }
-
-  .studio-advanced,
-  .studio-advanced[open] {
-    grid-column: 1;
   }
 
   .studio-generation-form__submit {

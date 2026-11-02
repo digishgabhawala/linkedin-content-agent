@@ -34,6 +34,7 @@ export function FeedbackForm({ onSubmit }: Props) {
         <label className="sr-only" htmlFor="feedback-stage">Feedback stage</label>
         <select
           id="feedback-stage"
+          className="app-select"
           value={stage}
           onChange={e => setStage(e.target.value)}
         >
